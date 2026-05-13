@@ -3,7 +3,7 @@
 
 The Java server owns API routing and validation. Commands implemented here are
 the compatibility boundary for Python-only workloads such as SuperPoint,
-RTAB-Map reprocess, and build-worker map generation.
+and RTAB-Map reprocess.
 """
 from __future__ import annotations
 
