@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import kr.ac.koreatech.indoor.vps.api.ClientApiException;
+import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.FloorMapBridgeRef;
 import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,12 @@ class PythonBridgeContractTest {
                 "buildingId", "b1",
                 "storageRoot", "/tmp/storage",
                 "imagePaths", List.of("/tmp/a.jpg"),
+                "floorMaps", List.of(Map.of(
+                        "floorId", "f1",
+                        "floorName", "1F",
+                        "level", 1,
+                        "filePath", "/tmp/rtabmap.db"
+                )),
                 "contractOnly", true
         ));
         assertThat(contractOnly.exitCode()).isZero();
@@ -86,10 +93,11 @@ class PythonBridgeContractTest {
         assertThatThrownBy(() -> client.localize(new LocalizeBridgeRequest(
                 "building-1",
                 List.of("/tmp/frame.jpg"),
-                "/tmp/storage"
+                "/tmp/storage",
+                List.of(new FloorMapBridgeRef("floor-1", "1F", 1, "/tmp/rtabmap.db"))
         )))
                 .isInstanceOfSatisfying(ClientApiException.class, error -> {
-                    assertThat(error.code()).isEqualTo("BRIDGE_COMMAND_NOT_IMPLEMENTED");
+                    assertThat(error.code()).isEqualTo("BRIDGE_BACKEND_NOT_CONFIGURED");
                     assertThat(error.detail()).containsEntry("command", "localize");
                     assertThat(error.detail()).containsEntry("exitCode", 2);
                 });

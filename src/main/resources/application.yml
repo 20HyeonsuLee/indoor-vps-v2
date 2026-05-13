@@ -27,4 +27,5 @@ indoor:
     enabled: ${PYTHON_BRIDGE_ENABLED:false}
     executable: ${PYTHON_EXECUTABLE:python3}
     bridge-script: ${PYTHON_BRIDGE_SCRIPT:./scripts/python_bridge/bridge_entry.py}
+    backend-source: ${PYTHON_BACKEND_SRC:../indoor-vps/indoor-pathfinding-backend/src}
     timeout-seconds: ${PYTHON_BRIDGE_TIMEOUT_SECONDS:60}

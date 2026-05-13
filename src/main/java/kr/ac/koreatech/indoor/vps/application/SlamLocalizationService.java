@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import kr.ac.koreatech.indoor.vps.api.ClientApiException;
+import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.FloorMapBridgeRef;
 import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.LocalizeBridgeResponse;
 import kr.ac.koreatech.indoor.vps.application.bridge.PythonBridgeClient;
@@ -20,13 +21,16 @@ import org.springframework.web.multipart.MultipartFile;
 public class SlamLocalizationService {
     private final IndoorProperties properties;
     private final PythonBridgeClient bridgeClient;
+    private final LocalizationMapProvider mapProvider;
 
     public SlamLocalizationService(
             IndoorProperties properties,
-            PythonBridgeClient bridgeClient
+            PythonBridgeClient bridgeClient,
+            LocalizationMapProvider mapProvider
     ) {
         this.properties = properties;
         this.bridgeClient = bridgeClient;
+        this.mapProvider = mapProvider;
     }
 
     public SLAMLocalizeResponse localize(
@@ -41,10 +45,17 @@ public class SlamLocalizationService {
         if (resolvedBuildingId == null || resolvedBuildingId.isBlank()) {
             throw new ClientApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "building_id or map_id is required");
         }
+        bridgeClient.ensureEnabled();
+
+        List<FloorMapBridgeRef> floorMaps = mapProvider.activeFloorMaps(resolvedBuildingId);
+        if (floorMaps.isEmpty()) {
+            throw new ClientApiException(HttpStatus.NOT_FOUND, "MAP_NOT_FOUND", "No maps found for building " + resolvedBuildingId);
+        }
 
         List<Path> tempFiles = new ArrayList<>();
+        Path tempDir = null;
         try {
-            Path tempDir = Files.createTempDirectory("indoor-localize-");
+            tempDir = Files.createTempDirectory("indoor-localize-");
             for (int i = 0; i < images.size(); i++) {
                 MultipartFile image = images.get(i);
                 validateImage(image, i);
@@ -55,7 +66,8 @@ public class SlamLocalizationService {
             LocalizeBridgeResponse response = bridgeClient.localize(new LocalizeBridgeRequest(
                     resolvedBuildingId,
                     tempFiles.stream().map(Path::toString).toList(),
-                    properties.getStorageRoot().toString()
+                    properties.getStorageRoot().toString(),
+                    floorMaps
             ));
             return new SLAMLocalizeResponse(
                     response.pose(),
@@ -72,6 +84,12 @@ public class SlamLocalizationService {
             for (Path tempFile : tempFiles) {
                 try {
                     Files.deleteIfExists(tempFile);
+                } catch (IOException ignored) {
+                }
+            }
+            if (tempDir != null) {
+                try {
+                    Files.deleteIfExists(tempDir);
                 } catch (IOException ignored) {
                 }
             }

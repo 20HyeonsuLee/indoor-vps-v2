@@ -51,11 +51,7 @@ public class PythonBridgeClient {
         return call(command, payload, JsonNode.class);
     }
 
-    public <T> T call(BridgeCommand command, Object payload, Class<T> responseType) {
-        return call(command.wireName(), payload, responseType);
-    }
-
-    public <T> T call(String command, Object payload, Class<T> responseType) {
+    public void ensureEnabled() {
         if (!properties.getPython().isEnabled()) {
             throw new ClientApiException(
                     HttpStatus.SERVICE_UNAVAILABLE,
@@ -63,14 +59,24 @@ public class PythonBridgeClient {
                     "Python bridge is disabled for this Java runtime."
             );
         }
+    }
+
+    public <T> T call(BridgeCommand command, Object payload, Class<T> responseType) {
+        return call(command.wireName(), payload, responseType);
+    }
+
+    public <T> T call(String command, Object payload, Class<T> responseType) {
+        ensureEnabled();
 
         try {
             String input = objectMapper.writeValueAsString(payload);
-            Process process = new ProcessBuilder(List.of(
+            ProcessBuilder processBuilder = new ProcessBuilder(List.of(
                     properties.getPython().getExecutable(),
                     properties.getPython().getBridgeScript().toString(),
                     command
-            )).redirectErrorStream(false).start();
+            )).redirectErrorStream(false);
+            applyEnvironment(processBuilder);
+            Process process = processBuilder.start();
 
             process.getOutputStream().write(input.getBytes(StandardCharsets.UTF_8));
             process.getOutputStream().close();
@@ -95,6 +101,15 @@ public class PythonBridgeClient {
                 Thread.currentThread().interrupt();
             }
             throw bridgeError(command, "PYTHON_BRIDGE_FAILED", e.getMessage(), null);
+        }
+    }
+
+    private void applyEnvironment(ProcessBuilder processBuilder) {
+        Map<String, String> environment = processBuilder.environment();
+        environment.put("STORAGE_ROOT", properties.getStorageRoot().toAbsolutePath().normalize().toString());
+        String backendSource = properties.getPython().getBackendSource();
+        if (backendSource != null && !backendSource.isBlank()) {
+            environment.put("INDOOR_LEGACY_BACKEND_SRC", backendSource);
         }
     }
 

@@ -32,6 +32,9 @@ or worker subprocesses. Back up the existing Python code first.
 - [x] Add typed Python bridge command contracts
 - [x] Replace hand-rolled route search with JGraphT
 - [x] Preserve typed Python bridge errors in Java envelope
+- [x] Add focused navigation graph unit coverage
+- [x] Replace raw scan-file storage with ZIP archive validation/extraction
+- [x] Keep localization DB lookup in Java/JPA and pass floor-map files to Python
 
 ## Cycle 1 Result
 
@@ -143,4 +146,47 @@ notes:
   - "NavigationJpaService reduced from 451 lines to 357 lines; NavigationGraphService owns graph construction and JGraphT Dijkstra routing."
   - "PythonBridgeContractTest now verifies BRIDGE_COMMAND_NOT_IMPLEMENTED is preserved by Java instead of being collapsed into PYTHON_BRIDGE_FAILED."
   - "Next candidate: add focused NavigationGraphService unit tests for shortest path, reverse traversal, unreachable route, missing node, duplicate edge."
+```
+
+## Cycle 5 Result
+
+```yaml
+cycles_run: 5
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Added focused NavigationGraphService unit tests and entity factory methods for graph fixtures."
+  - phase: eval
+    agent: eval-implementation
+    summary: "PASS. Tests cover shortest path, reverse traversal, unreachable route, missing node, duplicate edge, and 3D nearest-node behavior."
+verification:
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "./mvnw -q -Dtest=NavigationGraphServiceTest test"
+notes:
+  - "MapNodeEntity.create and MapEdgeEntity.create set required entity fields without opening broad setters."
+```
+
+## Cycle 6 Result
+
+```yaml
+cycles_run: 6
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Added Apache Commons Compress ZIP validation/extraction, JPA active floor-map handoff for localization, and a real localize bridge adapter that imports the legacy Python ML engine only when configured."
+verification:
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "python3 -m py_compile scripts/python_bridge/bridge_entry.py"
+  - "git diff --check"
+  - "SERVER_PORT=18088 FLYWAY_ENABLED=false PYTHON_BRIDGE_ENABLED=false ./mvnw spring-boot:run -q"
+  - "live smoke: create building/floor, upload valid scan ZIP, verify var/storage/scans/{scanId}/rtabmap.db, read merge status, delete temp data"
+notes:
+  - "commons-compress 1.28.0 is pinned because Spring Boot 4.0.6 does not manage this dependency."
+  - "Scan upload now requires a valid ZIP with root {scanId}/ plus rtabmap.db and scan_metadata.db."
+  - "Java/JPA resolves active floor maps; Python receives image paths and floor-map DB paths, avoiding a second SQLAlchemy DB connection for localization."
+  - "Next candidate: wire merge_scan/build_floor_map bridge commands to RTAB-Map reprocess and the legacy build worker boundary."
 ```

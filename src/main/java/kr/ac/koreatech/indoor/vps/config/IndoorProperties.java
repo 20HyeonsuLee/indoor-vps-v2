@@ -28,6 +28,7 @@ public class IndoorProperties {
         private boolean enabled;
         private String executable = "python3";
         private Path bridgeScript = Path.of("./scripts/python_bridge/bridge_entry.py");
+        private String backendSource = "";
         private long timeoutSeconds = 60;
 
         public boolean isEnabled() {
@@ -52,6 +53,14 @@ public class IndoorProperties {
 
         public void setBridgeScript(Path bridgeScript) {
             this.bridgeScript = bridgeScript;
+        }
+
+        public String getBackendSource() {
+            return backendSource;
+        }
+
+        public void setBackendSource(String backendSource) {
+            this.backendSource = backendSource;
         }
 
         public long getTimeoutSeconds() {

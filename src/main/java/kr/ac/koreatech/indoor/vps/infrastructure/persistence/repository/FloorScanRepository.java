@@ -20,6 +20,16 @@ public interface FloorScanRepository extends JpaRepository<FloorScanEntity, UUID
 
     boolean existsByScan_ScanId(UUID scanId);
 
+    @Query("""
+            select fs from FloorScanEntity fs
+            join fetch fs.floor f
+            join fetch fs.scan s
+            where f.building.buildingId = :buildingId
+              and fs.active = true
+            order by f.level asc, fs.createdAt asc
+            """)
+    List<FloorScanEntity> findActiveForBuilding(@Param("buildingId") UUID buildingId);
+
     @Query("select coalesce(max(fs.uploadOrder), 0) + 1 from FloorScanEntity fs where fs.floor.floorId = :floorId")
     int nextUploadOrder(@Param("floorId") UUID floorId);
 

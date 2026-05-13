@@ -5,20 +5,12 @@ import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.api.ClientApiException;
-import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
+import kr.ac.koreatech.indoor.vps.application.persistence.ScanArchiveStorageService.StoredScanArchive;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.BuildState;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.FloorEntity;
@@ -41,7 +33,7 @@ public class ScanJpaService {
     private final ScanIngestRepository scanIngestRepository;
     private final FloorScanRepository floorScanRepository;
     private final BuildJobRepository buildJobRepository;
-    private final IndoorProperties properties;
+    private final ScanArchiveStorageService scanArchiveStorage;
     private final ObjectMapper objectMapper;
 
     public ScanJpaService(
@@ -49,14 +41,14 @@ public class ScanJpaService {
             ScanIngestRepository scanIngestRepository,
             FloorScanRepository floorScanRepository,
             BuildJobRepository buildJobRepository,
-            IndoorProperties properties,
+            ScanArchiveStorageService scanArchiveStorage,
             ObjectMapper objectMapper
     ) {
         this.buildingService = buildingService;
         this.scanIngestRepository = scanIngestRepository;
         this.floorScanRepository = floorScanRepository;
         this.buildJobRepository = buildJobRepository;
-        this.properties = properties;
+        this.scanArchiveStorage = scanArchiveStorage;
         this.objectMapper = objectMapper;
     }
 
@@ -70,26 +62,22 @@ public class ScanJpaService {
     ) {
         FloorEntity floor = buildingService.requireFloor(floorId);
         UUID scanId = parseOrGenerate(scanIdText);
-        String fileName = safeFileName(upload.getOriginalFilename());
-        Path destination = properties.getStorageRoot()
-                .resolve("scans")
-                .resolve(scanId.toString())
-                .resolve(fileName);
-        StoredUpload stored = storeUpload(upload, destination);
+        boolean existingScan = scanIngestRepository.existsById(scanId);
+        if (existingScan && !force) {
+            throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
+        }
+        StoredScanArchive stored = scanArchiveStorage.store(scanId, upload, force);
 
         try {
             ScanIngestEntity scan = scanIngestRepository.findById(scanId)
                     .map(existing -> {
-                        if (!force) {
-                            throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
-                        }
-                        existing.replacePayload(stored.sha256(), stored.path().toString(), deviceInfoMap(deviceInfo));
+                        existing.replacePayload(stored.sha256(), stored.storagePath(), deviceInfoMap(deviceInfo));
                         return existing;
                     })
                     .orElseGet(() -> new ScanIngestEntity(
                             scanId,
                             stored.sha256(),
-                            stored.path().toString(),
+                            stored.storagePath(),
                             deviceInfoMap(deviceInfo)
                     ));
             ScanIngestEntity persistedScan = scanIngestRepository.saveAndFlush(scan);
@@ -101,18 +89,20 @@ public class ScanJpaService {
                     .orElseGet(() -> new FloorScanEntity(
                             floor,
                             persistedScan,
-                            fileName,
+                            stored.fileName(),
                             stored.size(),
                             floorScanRepository.nextUploadOrder(floorId)
                     ));
-            floorScan.setFileName(fileName);
+            floorScan.setFileName(stored.fileName());
             floorScan.setFileSize(stored.size());
             floorScan.setStatus("UPLOADED");
             floorScan.setActive(true);
             floorScan = floorScanRepository.saveAndFlush(floorScan);
             return toScanChunkResponse(floorScan);
         } catch (RuntimeException e) {
-            deleteQuietly(destination);
+            if (!existingScan) {
+                scanArchiveStorage.deleteScan(scanId);
+            }
             throw e;
         }
     }
@@ -134,6 +124,7 @@ public class ScanJpaService {
         floorScanRepository.flush();
         if (!floorScanRepository.existsByScan_ScanId(scanId)) {
             scanIngestRepository.deleteById(scanId);
+            scanArchiveStorage.deleteScan(scanId);
         }
     }
 
@@ -216,31 +207,6 @@ public class ScanJpaService {
         );
     }
 
-    private StoredUpload storeUpload(MultipartFile upload, Path destination) {
-        MessageDigest digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "HASH_UNAVAILABLE", e.getMessage());
-        }
-        long size = 0;
-        try {
-            Files.createDirectories(destination.getParent());
-            try (InputStream in = upload.getInputStream(); OutputStream out = Files.newOutputStream(destination)) {
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    digest.update(buffer, 0, read);
-                    out.write(buffer, 0, read);
-                    size += read;
-                }
-            }
-        } catch (IOException e) {
-            throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_STORE_FAILED", e.getMessage());
-        }
-        return new StoredUpload(destination, HexFormat.of().formatHex(digest.digest()), size);
-    }
-
     private Map<String, Object> deviceInfoMap(String deviceInfo) {
         if (deviceInfo == null || deviceInfo.isBlank()) {
             return null;
@@ -262,13 +228,6 @@ public class ScanJpaService {
         } catch (IllegalArgumentException e) {
             throw new ClientApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_SCAN_ID", "invalid scan_id");
         }
-    }
-
-    private String safeFileName(String originalFilename) {
-        if (originalFilename == null || originalFilename.isBlank()) {
-            return "upload.bin";
-        }
-        return Path.of(originalFilename.replace('\\', '/')).getFileName().toString();
     }
 
     private String publicBuildState(BuildState state) {
@@ -295,14 +254,4 @@ public class ScanJpaService {
         return new ClientApiException(HttpStatus.NOT_FOUND, code, message);
     }
 
-    private void deleteQuietly(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            // Best-effort cleanup after a DB failure.
-        }
-    }
-
-    private record StoredUpload(Path path, String sha256, long size) {
-    }
 }
