@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MapEdgeRepository extends JpaRepository<MapEdgeEntity, UUID> {
     List<MapEdgeEntity> findByScanIdAndStaleFalseOrderByEdgeId(UUID scanId);
+
+    long deleteByScanId(UUID scanId);
 }

@@ -35,6 +35,11 @@ or worker subprocesses. Back up the existing Python code first.
 - [x] Add focused navigation graph unit coverage
 - [x] Replace raw scan-file storage with ZIP archive validation/extraction
 - [x] Keep localization DB lookup in Java/JPA and pass floor-map files to Python
+- [x] Preserve existing scan archive data when forced replacement upload is invalid
+- [x] Resolve omitted scan IDs from scan ZIP root UUID
+- [x] Wire merge-scan command to legacy RTAB-Map Python boundary
+- [x] Add Java-owned build worker lifecycle with JPA persistence
+- [x] Read RTAB-Map `Node`/`Link` SQLite artifacts through library adapter, then persist graph through JPA
 
 ## Cycle 1 Result
 
@@ -193,4 +198,52 @@ post_eval_fixes:
   - "force=true archive replacement now validates and extracts into a temp directory before replacing the existing scan root."
   - "scan_id can be omitted; the JPA upload path resolves it from the ZIP root UUID."
   - "PYTHON_BACKEND_SRC now defaults to blank and is only forwarded to the bridge when explicitly configured."
+```
+
+## Cycle 7 Result
+
+```yaml
+cycles_run: 7
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Fixed scan archive replacement semantics, restored optional scan_id behavior by deriving it from the ZIP root UUID, and wired merge_scan to the legacy RTAB-Map subprocess boundary."
+  - phase: eval
+    agent: eval-implementation
+    summary: "PASS. No blocking findings; remaining warning is lack of a real RTAB-Map binary success-path smoke on this machine."
+verification:
+  - "python3 -m py_compile scripts/python_bridge/bridge_entry.py"
+  - "./mvnw -q -Dtest=ScanArchiveStorageServiceTest,PythonBridgeContractTest test"
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "git diff --check"
+  - "SERVER_PORT=18089 FLYWAY_ENABLED=false PYTHON_BRIDGE_ENABLED=false ./mvnw spring-boot:run -q"
+  - "live smoke: upload scan ZIP without scan_id, verify response scanId is derived from ZIP root UUID"
+notes:
+  - "Invalid force replacement now leaves the previously extracted scan directory untouched."
+  - "Multi-scan merge still delegates only the RTAB-Map-compatible compute boundary to Python; Java/JPA owns API state."
+```
+
+## Cycle 8 Result
+
+```yaml
+cycles_run: 8
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Added a scheduled Java build worker that claims pending build jobs, reads RTAB-Map Node/Link graph artifacts, and persists map_nodes/map_edges/build status through Spring Data JPA."
+verification:
+  - "./mvnw -q -Dtest=RtabmapGraphReaderTest test"
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "git diff --check"
+  - "SERVER_PORT=18093 DATABASE_URL=jdbc:postgresql://127.0.0.1:55432/indoor_v2_smoke_1778686988 FLYWAY_ENABLED=true PYTHON_BRIDGE_ENABLED=false BUILD_WORKER_POLL_INTERVAL_MS=500 ./mvnw spring-boot:run -q"
+  - "live smoke on fresh Flyway DB: upload scan ZIP with SQLite rtabmap.db Node/Link tables, enqueue /process, poll SUCCEEDED, verify /path returns nodes=2 edges=1"
+notes:
+  - "Application persistence is Spring Data JPA/Hibernate Spatial; no application database JdbcTemplate/JdbcClient repository path is used."
+  - "RTAB-Map graph ingestion uses xerial SQLiteDataSource plus Spring JdbcClient only as a file-format adapter for rtabmap.db; resulting graph rows are persisted via JPA repositories."
+  - ".gitignore was tightened from build/ to /build/ so source package src/.../application/build is tracked."
+  - "A shared-DB smoke was discarded because the existing Docker worker consumed the pending build job first; the accepted evidence uses an isolated temporary database."
 ```

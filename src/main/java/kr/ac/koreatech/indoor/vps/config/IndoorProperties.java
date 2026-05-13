@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class IndoorProperties {
     private Path storageRoot = Path.of("./var/storage");
     private Python python = new Python();
+    private BuildWorker buildWorker = new BuildWorker();
 
     public Path getStorageRoot() {
         return storageRoot;
@@ -22,6 +23,14 @@ public class IndoorProperties {
 
     public void setPython(Python python) {
         this.python = python;
+    }
+
+    public BuildWorker getBuildWorker() {
+        return buildWorker;
+    }
+
+    public void setBuildWorker(BuildWorker buildWorker) {
+        this.buildWorker = buildWorker;
     }
 
     public static class Python {
@@ -69,6 +78,36 @@ public class IndoorProperties {
 
         public void setTimeoutSeconds(long timeoutSeconds) {
             this.timeoutSeconds = timeoutSeconds;
+        }
+    }
+
+    public static class BuildWorker {
+        private boolean enabled = true;
+        private long pollIntervalMs = 2000;
+        private int batchSize = 1;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public long getPollIntervalMs() {
+            return pollIntervalMs;
+        }
+
+        public void setPollIntervalMs(long pollIntervalMs) {
+            this.pollIntervalMs = pollIntervalMs;
+        }
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize;
         }
     }
 }

@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.BuildState;
@@ -51,6 +52,16 @@ public class BuildJobEntity {
 
     @Column(name = "failure_detail")
     private String failureDetail;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> counts;
+
+    @Column(name = "started_at")
+    private Instant startedAt;
+
+    @Column(name = "finished_at")
+    private Instant finishedAt;
 
     @Column(name = "max_attempts", nullable = false)
     private int maxAttempts = 3;
@@ -97,5 +108,39 @@ public class BuildJobEntity {
 
     public String getFailureDetail() {
         return failureDetail;
+    }
+
+    public void markRunning() {
+        this.state = BuildState.running;
+        this.currentStep = BuildStep.init;
+        this.progress = 0.05;
+        this.startedAt = Instant.now();
+        this.attemptCount++;
+        this.failureReason = null;
+        this.failureDetail = null;
+    }
+
+    public void markPersisting() {
+        this.currentStep = BuildStep.persist;
+        this.progress = 0.95;
+    }
+
+    public void markSucceeded(Map<String, Object> counts) {
+        this.state = BuildState.succeeded;
+        this.currentStep = BuildStep.done;
+        this.progress = 1.0;
+        this.finishedAt = Instant.now();
+        this.counts = counts;
+        this.failureReason = null;
+        this.failureDetail = null;
+    }
+
+    public void markFailed(BuildFailureReason failureReason, String failureDetail) {
+        this.state = BuildState.failed;
+        this.currentStep = BuildStep.done;
+        this.progress = 1.0;
+        this.finishedAt = Instant.now();
+        this.failureReason = failureReason;
+        this.failureDetail = failureDetail == null ? null : failureDetail.substring(0, Math.min(failureDetail.length(), 2000));
     }
 }

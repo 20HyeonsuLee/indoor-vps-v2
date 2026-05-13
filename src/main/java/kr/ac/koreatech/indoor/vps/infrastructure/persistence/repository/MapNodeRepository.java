@@ -9,4 +9,6 @@ public interface MapNodeRepository extends JpaRepository<MapNodeEntity, UUID> {
     List<MapNodeEntity> findByScanIdAndStaleFalseOrderByNodeId(UUID scanId);
 
     boolean existsByScanIdAndStaleFalse(UUID scanId);
+
+    long deleteByScanId(UUID scanId);
 }

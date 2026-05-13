@@ -29,3 +29,7 @@ indoor:
     bridge-script: ${PYTHON_BRIDGE_SCRIPT:./scripts/python_bridge/bridge_entry.py}
     backend-source: ${PYTHON_BACKEND_SRC:}
     timeout-seconds: ${PYTHON_BRIDGE_TIMEOUT_SECONDS:60}
+  build-worker:
+    enabled: ${BUILD_WORKER_ENABLED:true}
+    poll-interval-ms: ${BUILD_WORKER_POLL_INTERVAL_MS:2000}
+    batch-size: ${BUILD_WORKER_BATCH_SIZE:1}
