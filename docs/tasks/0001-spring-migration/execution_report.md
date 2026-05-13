@@ -21,9 +21,44 @@ or worker subprocesses. Back up the existing Python code first.
 ## Status
 
 - [x] Initialize target git repository
-- [ ] Back up existing Python backend
-- [ ] Check JVM/Python library compatibility
-- [ ] Scaffold Spring Boot backend
-- [ ] Port API contracts
-- [ ] Add Python bridge for unavoidable Python workloads
-- [ ] Verify build and OpenAPI surface
+- [x] Back up existing Python backend
+- [x] Check JVM/Python library compatibility
+- [x] Scaffold Spring Boot backend
+- [x] Port API contracts
+- [x] Add Python bridge for unavoidable Python workloads
+- [x] Verify build and OpenAPI surface
+
+## Cycle 1 Result
+
+```yaml
+cycles_run: 1
+verdict: PASS
+agent_trace:
+  - phase: plan
+    agent: plan-architect
+    summary: "Use Java for HTTP/API/DB/job lifecycle and keep Python behind subprocess bridge for SLAM/ML/build workloads."
+  - phase: audit
+    agent: explorer
+    summary: "Confirmed cleaned API surface and Python-only boundaries: SLAM localize, RTAB-Map reprocess, build/map worker."
+  - phase: build
+    agent: main-session
+    summary: "Spring Boot scaffold, API controllers, DTOs, OpenAPI aliases, Flyway baseline, and Python bridge stub."
+verification:
+  - "./mvnw test -q"
+  - "SERVER_PORT=18081 FLYWAY_ENABLED=false ./mvnw spring-boot:run -q"
+  - "curl -fsS http://127.0.0.1:18081/openapi.json"
+  - "curl -fsSI http://127.0.0.1:18081/v3/api-docs"
+  - "curl -fsSI http://127.0.0.1:18081/swagger-ui/index.html"
+warnings:
+  - "Cycle 1 API services are in-memory contract scaffolds; database-backed repositories are next."
+  - "Python bridge only has a health stub; localize/build command parity is next."
+post_eval_fixes:
+  - "Wrapped Spring MVC binding/type mismatch errors in the client validation envelope."
+  - "Added invalid UUID contract test for `/api/v1/buildings/not-a-uuid`."
+```
+
+## Artifacts
+
+- `backups/indoor-pathfinding-backend-python-20260513-215226.tar.gz`
+- `docs/tasks/0001-spring-migration/python-openapi-current.json`
+- `docs/tasks/0001-spring-migration/migration_plan.md`

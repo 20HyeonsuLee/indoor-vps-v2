@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: indoor-vps-v2
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:55432/indoor}
+    username: ${POSTGRES_USER:indoor}
+    password: ${POSTGRES_PASSWORD:indoor}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: ${FLYWAY_ENABLED:false}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+springdoc:
+  swagger-ui:
+    path: /docs
+  api-docs:
+    path: /openapi.json
+
+indoor:
+  storage-root: ${STORAGE_ROOT:./var/storage}
+  python:
+    enabled: ${PYTHON_BRIDGE_ENABLED:false}
+    executable: ${PYTHON_EXECUTABLE:python3}
+    bridge-script: ${PYTHON_BRIDGE_SCRIPT:./scripts/python_bridge/bridge_entry.py}
+    timeout-seconds: ${PYTHON_BRIDGE_TIMEOUT_SECONDS:60}
