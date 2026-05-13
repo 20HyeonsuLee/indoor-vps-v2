@@ -2,15 +2,14 @@ package kr.ac.koreatech.indoor.vps.application;
 
 import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import kr.ac.koreatech.indoor.vps.api.ClientApiException;
+import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.LocalizeBridgeRequest;
+import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.LocalizeBridgeResponse;
 import kr.ac.koreatech.indoor.vps.application.bridge.PythonBridgeClient;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import org.springframework.http.HttpStatus;
@@ -21,16 +20,13 @@ import org.springframework.web.multipart.MultipartFile;
 public class SlamLocalizationService {
     private final IndoorProperties properties;
     private final PythonBridgeClient bridgeClient;
-    private final ObjectMapper objectMapper;
 
     public SlamLocalizationService(
             IndoorProperties properties,
-            PythonBridgeClient bridgeClient,
-            ObjectMapper objectMapper
+            PythonBridgeClient bridgeClient
     ) {
         this.properties = properties;
         this.bridgeClient = bridgeClient;
-        this.objectMapper = objectMapper;
     }
 
     public SLAMLocalizeResponse localize(
@@ -56,12 +52,20 @@ public class SlamLocalizationService {
                 image.transferTo(file);
                 tempFiles.add(file);
             }
-            JsonNode response = bridgeClient.callJson("localize", Map.of(
-                    "buildingId", resolvedBuildingId,
-                    "imagePaths", tempFiles.stream().map(Path::toString).toList(),
-                    "storageRoot", properties.getStorageRoot().toString()
+            LocalizeBridgeResponse response = bridgeClient.localize(new LocalizeBridgeRequest(
+                    resolvedBuildingId,
+                    tempFiles.stream().map(Path::toString).toList(),
+                    properties.getStorageRoot().toString()
             ));
-            return objectMapper.treeToValue(response, SLAMLocalizeResponse.class);
+            return new SLAMLocalizeResponse(
+                    response.pose(),
+                    response.confidence(),
+                    response.mapId(),
+                    response.numMatches(),
+                    response.matchedImageIndex(),
+                    response.floorId(),
+                    response.floorLevel()
+            );
         } catch (IOException e) {
             throw new ClientApiException(HttpStatus.SERVICE_UNAVAILABLE, "SLAM_LOCALIZE_FAILED", e.getMessage());
         } finally {

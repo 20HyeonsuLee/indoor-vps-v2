@@ -2,6 +2,7 @@ package kr.ac.koreatech.indoor.vps.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -95,5 +97,21 @@ class OpenApiContractSmokeTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.message").value("request validation failed"))
                 .andExpect(jsonPath("$.detail.errors").isArray());
+    }
+
+    @Test
+    void disabledPythonBridgeUsesClientErrorEnvelope() throws Exception {
+        MockMultipartFile image = new MockMultipartFile(
+                "images",
+                "frame.jpg",
+                "image/jpeg",
+                "fake-image".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/slam/v3/localize")
+                        .file(image)
+                        .param("building_id", "building-1"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("PYTHON_BRIDGE_DISABLED"));
     }
 }

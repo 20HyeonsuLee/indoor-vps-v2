@@ -28,6 +28,8 @@ or worker subprocesses. Back up the existing Python code first.
 - [x] Add Python bridge for unavoidable Python workloads
 - [x] Verify build and OpenAPI surface
 - [x] Replace contract scaffold with Spring Data JPA persistence
+- [x] Split JPA facade into SRP application services
+- [x] Add typed Python bridge command contracts
 
 ## Cycle 1 Result
 
@@ -90,4 +92,30 @@ notes:
   - "Direct JdbcTemplate service attempt was removed after user feedback; persistence now uses Spring Data JPA and Hibernate Spatial/JTS."
   - "Test runtime sets indoor.persistence=memory; runtime default is indoor.persistence=jpa."
   - "Eval warning fixed by aligning poi_canonical baseline with Python schema display_point/display_area_id/source_mark_ids/cluster_method/created_at columns."
+```
+
+## Cycle 3 Result
+
+```yaml
+cycles_run: 3
+verdict: PASS
+agent_trace:
+  - phase: plan
+    agent: plan-architect
+    summary: "Keep JpaVpsService as a thin facade, split JPA responsibilities by domain, and formalize Python bridge command contracts."
+  - phase: build
+    agent: main-session
+    summary: "Reduced JpaVpsService from 941 lines to a delegating facade, added building/scan/navigation/POI JPA services, typed bridge request/response records, bridge command enum, Python dispatch validation, and bridge contract tests."
+  - phase: eval
+    agent: eval-implementation
+    summary: "PASS. API surface unchanged, direct JDBC absent, facade delegates only, bridge contracts validated."
+verification:
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "SERVER_PORT=18086 FLYWAY_ENABLED=false ./mvnw spring-boot:run -q"
+  - "live smoke: create building/floor, upload scan, merge active chunk, enqueue process, read process status, read floor map, search POIs, delete temp data"
+notes:
+  - "JpaVpsService is now 161 lines; domain service sizes: Building 197, Scan 308, Navigation 451, POI 83."
+  - "Python bridge commands localize/merge_scan/build_floor_map validate typed payloads and return explicit BRIDGE_COMMAND_NOT_IMPLEMENTED until Python-only compute is wired."
+  - "Next candidate: split NavigationJpaService route algorithm/helper and preserve typed bridge error codes through the Java envelope."
 ```
