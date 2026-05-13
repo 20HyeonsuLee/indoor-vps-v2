@@ -30,6 +30,19 @@ public interface FloorScanRepository extends JpaRepository<FloorScanEntity, UUID
             """)
     List<FloorScanEntity> findActiveForBuilding(@Param("buildingId") UUID buildingId);
 
+    @Query("""
+            select fs from FloorScanEntity fs
+            join fetch fs.floor f
+            join fetch fs.scan s
+            where f.floorId = :floorId
+              and (fs.floorScanId in :ids or s.scanId in :ids)
+            order by fs.uploadOrder asc, fs.createdAt asc
+            """)
+    List<FloorScanEntity> findMergeSources(
+            @Param("floorId") UUID floorId,
+            @Param("ids") List<UUID> ids
+    );
+
     @Query("select coalesce(max(fs.uploadOrder), 0) + 1 from FloorScanEntity fs where fs.floor.floorId = :floorId")
     int nextUploadOrder(@Param("floorId") UUID floorId);
 

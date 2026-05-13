@@ -189,4 +189,8 @@ notes:
   - "Scan upload now requires a valid ZIP with root {scanId}/ plus rtabmap.db and scan_metadata.db."
   - "Java/JPA resolves active floor maps; Python receives image paths and floor-map DB paths, avoiding a second SQLAlchemy DB connection for localization."
   - "Next candidate: wire merge_scan/build_floor_map bridge commands to RTAB-Map reprocess and the legacy build worker boundary."
+post_eval_fixes:
+  - "force=true archive replacement now validates and extracts into a temp directory before replacing the existing scan root."
+  - "scan_id can be omitted; the JPA upload path resolves it from the ZIP root UUID."
+  - "PYTHON_BACKEND_SRC now defaults to blank and is only forwarded to the bridge when explicitly configured."
 ```

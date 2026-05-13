@@ -40,6 +40,39 @@ class ScanArchiveStorageServiceTest {
     }
 
     @Test
+    void resolvesScanIdFromZipRootWhenRequestOmitsScanId() throws Exception {
+        UUID scanId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        ScanArchiveStorageService service = service(tempDir);
+
+        UUID resolved = service.resolveScanId(
+                new MockMultipartFile("file", "scan.zip", "application/zip", zip(scanId.toString(), false)),
+                null
+        );
+
+        assertThat(resolved).isEqualTo(scanId);
+    }
+
+    @Test
+    void forceReplacementKeepsExistingScanWhenNewArchiveIsInvalid() throws Exception {
+        UUID scanId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        Path scanRoot = tempDir.resolve("scans").resolve(scanId.toString());
+        Files.createDirectories(scanRoot);
+        Files.writeString(scanRoot.resolve("rtabmap.db"), "old-rtabmap");
+        Files.writeString(scanRoot.resolve("scan_metadata.db"), "old-sidecar");
+        ScanArchiveStorageService service = service(tempDir);
+
+        assertThatThrownBy(() -> service.store(
+                scanId,
+                new MockMultipartFile("file", "scan.zip", "application/zip", zipMissingRequired(scanId.toString())),
+                true
+        ))
+                .isInstanceOf(ClientApiException.class);
+
+        assertThat(Files.readString(scanRoot.resolve("rtabmap.db"))).isEqualTo("old-rtabmap");
+        assertThat(Files.readString(scanRoot.resolve("scan_metadata.db"))).isEqualTo("old-sidecar");
+    }
+
+    @Test
     void rejectsZipSlipEntries() throws Exception {
         UUID scanId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
         ScanArchiveStorageService service = service(tempDir);
@@ -67,6 +100,14 @@ class ScanArchiveStorageServiceTest {
             if (withZipSlip) {
                 entry(zip, root + "/../evil.txt", "evil");
             }
+        }
+        return bytes.toByteArray();
+    }
+
+    private byte[] zipMissingRequired(String root) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            entry(zip, root + "/scan_metadata.db", "sidecar");
         }
         return bytes.toByteArray();
     }

@@ -60,7 +60,10 @@ def dispatch(command: str, payload: dict[str, object]) -> int:
         return localize(payload)
     if command == "merge_scan":
         validate_merge_scan(payload)
-        return contract_or_not_implemented(command, payload)
+        if payload.get("contractOnly") is True:
+            print_json({"ok": True, "command": command})
+            return 0
+        return merge_scan(payload)
     if command == "build_floor_map":
         validate_build_floor_map(payload)
         return contract_or_not_implemented(command, payload)
@@ -190,7 +193,7 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
 
 
 def load_legacy_localize_dependencies():
-    backend_src = os.environ.get("INDOOR_LEGACY_BACKEND_SRC", "")
+    backend_src = os.environ.get("INDOOR_LEGACY_BACKEND_SRC") or os.environ.get("PYTHON_BACKEND_SRC", "")
     if not backend_src:
         raise BridgeRuntimeError(
             "BRIDGE_BACKEND_NOT_CONFIGURED",
@@ -232,6 +235,90 @@ def extract_first_intrinsics(slam_engine, floor_maps: list[dict[str, object]]) -
     )
 
 
+def merge_scan(payload: dict[str, object]) -> int:
+    result = asyncio.run(merge_scan_async(payload))
+    print_json(result)
+    return 0
+
+
+async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
+    if len(payload["sourcePaths"]) < 2:
+        raise BridgeRuntimeError(
+            "BRIDGE_MERGE_REQUIRES_SOURCES",
+            "merge_scan requires at least two sourcePaths",
+        )
+    runner_class, params_class, source_class, merge_error_class = load_legacy_merge_dependencies()
+    output_dir = Path(str(payload["outputDir"]))
+    output_db = output_dir / "rtabmap.db"
+    work_dir = output_dir / "_merge_work"
+    sources = [
+        source_class(scan_id=Path(path).parent.name, db_path=Path(path))
+        for path in payload["sourcePaths"]
+    ]
+    runner = runner_class()
+    if not runner.is_available():
+        raise BridgeRuntimeError(
+            "RTABMAP_REPROCESS_UNAVAILABLE",
+            "rtabmap-reprocess binary not available",
+        )
+    try:
+        result = await runner.run(
+            sources=sources,
+            output_db=output_db,
+            work_dir=work_dir,
+            params=params_class(),
+            timeout_s=float(payload.get("timeoutSeconds") or 900.0),
+        )
+    except merge_error_class as exc:
+        raise BridgeRuntimeError(
+            "RTABMAP_REPROCESS_FAILED",
+            str(exc),
+            {"sourceCount": len(sources)},
+        ) from exc
+    return {
+        "mergedDbPath": str(output_db),
+        "sha256": sha256_file(output_db),
+        "fileSize": output_db.stat().st_size,
+        "diagnostics": result.to_metadata(),
+    }
+
+
+def load_legacy_merge_dependencies():
+    backend_src = os.environ.get("INDOOR_LEGACY_BACKEND_SRC") or os.environ.get("PYTHON_BACKEND_SRC", "")
+    if not backend_src:
+        raise BridgeRuntimeError(
+            "BRIDGE_BACKEND_NOT_CONFIGURED",
+            "INDOOR_LEGACY_BACKEND_SRC is required for merge_scan",
+        )
+    backend_path = Path(backend_src).expanduser().resolve()
+    if not backend_path.exists():
+        raise BridgeRuntimeError(
+            "BRIDGE_BACKEND_NOT_CONFIGURED",
+            "legacy Python backend source path does not exist",
+            {"path": str(backend_path)},
+        )
+    sys.path.insert(0, str(backend_path))
+    try:
+        from indoor_server.application.building.multiscan_rtabmap_merge import (  # type: ignore
+            MultiScanReprocessParams,
+            MultiScanRtabmapMergeError,
+            MultiScanRtabmapReprocessRunner,
+            SourceRtabmapScan,
+        )
+    except Exception as exc:
+        raise BridgeRuntimeError(
+            "BRIDGE_BACKEND_IMPORT_FAILED",
+            str(exc),
+            {"path": str(backend_path), "type": type(exc).__name__},
+        ) from exc
+    return (
+        MultiScanRtabmapReprocessRunner,
+        MultiScanReprocessParams,
+        SourceRtabmapScan,
+        MultiScanRtabmapMergeError,
+    )
+
+
 def read_image_bytes(image_paths: list[str]) -> list[bytes]:
     images: list[bytes] = []
     for index, image_path in enumerate(image_paths):
@@ -252,6 +339,16 @@ def read_image_bytes(image_paths: list[str]) -> list[bytes]:
             )
         images.append(data)
     return images
+
+
+def sha256_file(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def fail(code: str, message: str, detail: dict[str, object] | None = None) -> int:

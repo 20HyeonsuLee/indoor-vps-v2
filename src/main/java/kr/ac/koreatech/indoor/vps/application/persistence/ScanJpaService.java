@@ -5,12 +5,17 @@ import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.api.ClientApiException;
+import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.MergeScanBridgeRequest;
+import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.MergeScanBridgeResponse;
+import kr.ac.koreatech.indoor.vps.application.bridge.PythonBridgeClient;
 import kr.ac.koreatech.indoor.vps.application.persistence.ScanArchiveStorageService.StoredScanArchive;
+import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.BuildState;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.FloorEntity;
@@ -34,6 +39,8 @@ public class ScanJpaService {
     private final FloorScanRepository floorScanRepository;
     private final BuildJobRepository buildJobRepository;
     private final ScanArchiveStorageService scanArchiveStorage;
+    private final PythonBridgeClient bridgeClient;
+    private final IndoorProperties properties;
     private final ObjectMapper objectMapper;
 
     public ScanJpaService(
@@ -42,6 +49,8 @@ public class ScanJpaService {
             FloorScanRepository floorScanRepository,
             BuildJobRepository buildJobRepository,
             ScanArchiveStorageService scanArchiveStorage,
+            PythonBridgeClient bridgeClient,
+            IndoorProperties properties,
             ObjectMapper objectMapper
     ) {
         this.buildingService = buildingService;
@@ -49,6 +58,8 @@ public class ScanJpaService {
         this.floorScanRepository = floorScanRepository;
         this.buildJobRepository = buildJobRepository;
         this.scanArchiveStorage = scanArchiveStorage;
+        this.bridgeClient = bridgeClient;
+        this.properties = properties;
         this.objectMapper = objectMapper;
     }
 
@@ -61,7 +72,7 @@ public class ScanJpaService {
             boolean force
     ) {
         FloorEntity floor = buildingService.requireFloor(floorId);
-        UUID scanId = parseOrGenerate(scanIdText);
+        UUID scanId = scanArchiveStorage.resolveScanId(upload, parseOptional(scanIdText));
         boolean existingScan = scanIngestRepository.existsById(scanId);
         if (existingScan && !force) {
             throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
@@ -130,12 +141,54 @@ public class ScanJpaService {
 
     @Transactional
     public MergedScanResponse mergeScans(UUID floorId, List<UUID> chunkIds) {
-        buildingService.requireFloor(floorId);
+        FloorEntity floor = buildingService.requireFloor(floorId);
         if (chunkIds == null || chunkIds.isEmpty()) {
             return mergeStatus(floorId);
         }
-        FloorScanEntity target = floorScanRepository.findByFloor_FloorIdAndFloorScanId(floorId, chunkIds.get(0))
-                .orElseThrow(() -> notFound("SCAN_CHUNK_NOT_FOUND", "scan chunk not found"));
+        List<FloorScanEntity> sources = floorScanRepository.findMergeSources(floorId, chunkIds);
+        if (sources.isEmpty()) {
+            throw notFound("SCAN_CHUNK_NOT_FOUND", "scan chunk not found");
+        }
+        if (sources.size() != new java.util.HashSet<>(chunkIds).size()) {
+            throw notFound("SCAN_CHUNK_NOT_FOUND", "one or more scan chunks were not found");
+        }
+        if (sources.size() == 1) {
+            return activateSingleMerge(floorId, sources.getFirst());
+        }
+
+        UUID mergedScanId = UUID.randomUUID();
+        Path outputDir = properties.getStorageRoot().resolve("scans").resolve(mergedScanId.toString());
+        MergeScanBridgeResponse merge = bridgeClient.mergeScan(new MergeScanBridgeRequest(
+                floorId,
+                mergedScanId,
+                sources.stream()
+                        .map(source -> rtabmapDbPath(source.getScan().getStoragePath()).toString())
+                        .toList(),
+                outputDir.toString()
+        ));
+
+        ScanIngestEntity scan = scanIngestRepository.saveAndFlush(new ScanIngestEntity(
+                mergedScanId,
+                merge.sha256(),
+                "scans/" + mergedScanId,
+                Map.of("merge", merge.diagnostics() == null ? Map.of() : merge.diagnostics())
+        ));
+        floorScanRepository.deactivateForFloor(floorId);
+        floorScanRepository.flush();
+        FloorScanEntity floorScan = new FloorScanEntity(
+                floor,
+                scan,
+                "merged_" + mergedScanId + ".db",
+                merge.fileSize(),
+                floorScanRepository.nextUploadOrder(floorId)
+        );
+        floorScan.setStatus("MERGED");
+        floorScan.setActive(true);
+        floorScanRepository.saveAndFlush(floorScan);
+        return new MergedScanResponse(floorId, mergedScanId, "MERGED");
+    }
+
+    private MergedScanResponse activateSingleMerge(UUID floorId, FloorScanEntity target) {
         floorScanRepository.deactivateForFloor(floorId);
         floorScanRepository.flush();
         target.setActive(true);
@@ -219,9 +272,9 @@ public class ScanJpaService {
         }
     }
 
-    private UUID parseOrGenerate(String value) {
+    private UUID parseOptional(String value) {
         if (value == null || value.isBlank()) {
-            return UUID.randomUUID();
+            return null;
         }
         try {
             return UUID.fromString(value);
@@ -252,6 +305,21 @@ public class ScanJpaService {
 
     private ClientApiException notFound(String code, String message) {
         return new ClientApiException(HttpStatus.NOT_FOUND, code, message);
+    }
+
+    private Path rtabmapDbPath(String storagePath) {
+        Path path = Path.of(storagePath);
+        if (!path.isAbsolute()) {
+            path = properties.getStorageRoot().resolve(path);
+        }
+        Path fileName = path.getFileName();
+        if (fileName != null && "rtabmap.db".equals(fileName.toString())) {
+            return path;
+        }
+        if (fileName != null && fileName.toString().endsWith(".zip") && path.getParent() != null) {
+            return path.getParent().resolve("rtabmap.db");
+        }
+        return path.resolve("rtabmap.db");
     }
 
 }

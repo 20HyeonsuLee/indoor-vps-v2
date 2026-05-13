@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
@@ -12,6 +13,7 @@ import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -38,6 +40,9 @@ public class ScanArchiveStorageService {
     }
 
     public StoredScanArchive store(UUID scanId, MultipartFile upload, boolean force) {
+        if (scanId == null) {
+            throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "SCAN_ID_REQUIRED", "scan id must be resolved before storing");
+        }
         if (upload == null || upload.isEmpty()) {
             throw badRequest("ZIP_ARCHIVE_REQUIRED", "scan archive zip is required");
         }
@@ -46,14 +51,14 @@ public class ScanArchiveStorageService {
         Path scanRoot = storageRoot.resolve("scans").resolve(scanId.toString()).normalize();
         Path tempDir = storageRoot.resolve("tmp").resolve("scan-archives").resolve(UUID.randomUUID().toString());
         Path tempZip = tempDir.resolve("upload.zip");
+        Path extractedScansRoot = tempDir.resolve("extract").resolve("scans");
+        Path extractedScanRoot = extractedScansRoot.resolve(scanId.toString());
 
         try {
             Files.createDirectories(tempDir);
             StoredUpload storedUpload = copyAndHash(upload, tempZip);
-            if (force) {
-                deleteRecursively(scanRoot);
-            }
-            extractArchive(tempZip, storageRoot.resolve("scans"), scanId);
+            extractArchive(tempZip, extractedScansRoot, scanId);
+            replaceScanRoot(extractedScanRoot, scanRoot, force);
             return new StoredScanArchive(
                     scanId,
                     "scans/" + scanId,
@@ -66,6 +71,28 @@ public class ScanArchiveStorageService {
             throw e;
         } catch (IOException e) {
             throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "SCAN_ARCHIVE_STORE_FAILED", e.getMessage());
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    public UUID resolveScanId(MultipartFile upload, UUID requestedScanId) {
+        if (upload == null || upload.isEmpty()) {
+            throw badRequest("ZIP_ARCHIVE_REQUIRED", "scan archive zip is required");
+        }
+        Path storageRoot = properties.getStorageRoot().toAbsolutePath().normalize();
+        Path tempDir = storageRoot.resolve("tmp").resolve("scan-archives").resolve(UUID.randomUUID().toString());
+        Path tempZip = tempDir.resolve("inspect.zip");
+        try {
+            Files.createDirectories(tempDir);
+            copyOnly(upload, tempZip);
+            try (ZipFile zipFile = ZipFile.builder().setPath(tempZip).get()) {
+                return validateRoot(entries(zipFile), requestedScanId).scanId();
+            }
+        } catch (ClientApiException e) {
+            throw e;
+        } catch (IOException | IllegalArgumentException e) {
+            throw badRequest("ZIP_ARCHIVE_REQUIRED", "upload must be a valid zip archive");
         } finally {
             deleteRecursively(tempDir);
         }
@@ -90,13 +117,19 @@ public class ScanArchiveStorageService {
         return new StoredUpload(HexFormat.of().formatHex(digest.digest()), size);
     }
 
+    private void copyOnly(MultipartFile upload, Path destination) throws IOException {
+        try (InputStream in = upload.getInputStream(); OutputStream out = Files.newOutputStream(destination)) {
+            in.transferTo(out);
+        }
+    }
+
     private void extractArchive(Path zipPath, Path scansRoot, UUID scanId) {
         try (ZipFile zipFile = ZipFile.builder().setPath(zipPath).get()) {
             List<ZipArchiveEntry> entries = entries(zipFile);
-            String zipRoot = validateRoot(entries, scanId);
-            validateRequiredFiles(entries, zipRoot);
+            ArchiveRoot archiveRoot = validateRoot(entries, scanId);
+            validateRequiredFiles(entries, archiveRoot.rootName());
             validateEntries(entries);
-            extractEntries(zipFile, entries, zipRoot, scansRoot, scanId.toString());
+            extractEntries(zipFile, entries, archiveRoot.rootName(), scansRoot, scanId.toString());
         } catch (ClientApiException e) {
             throw e;
         } catch (IOException | IllegalArgumentException e) {
@@ -109,24 +142,34 @@ public class ScanArchiveStorageService {
         return Collections.list(enumeration);
     }
 
-    private String validateRoot(List<ZipArchiveEntry> entries, UUID scanId) {
+    private ArchiveRoot validateRoot(List<ZipArchiveEntry> entries, UUID requestedScanId) {
         Set<String> roots = entries.stream()
                 .map(ZipArchiveEntry::getName)
                 .filter(name -> name != null && !name.isBlank())
                 .map(name -> name.split("/", 2)[0])
                 .collect(Collectors.toSet());
-        Set<String> lowerRoots = roots.stream()
-                .map(String::toLowerCase)
-                .collect(Collectors.toSet());
-        String expected = scanId.toString().toLowerCase();
-        if (!lowerRoots.equals(Set.of(expected))) {
+        if (roots.size() != 1) {
             throw badRequest(
                     "SCAN_ARCHIVE_INVALID",
-                    "zip root directory must be exactly the scan id",
+                    "zip root directory must be exactly one scan id",
                     roots
             );
         }
-        return roots.iterator().next();
+        String rootName = roots.iterator().next();
+        UUID archiveScanId;
+        try {
+            archiveScanId = UUID.fromString(rootName);
+        } catch (IllegalArgumentException e) {
+            throw badRequest("SCAN_ARCHIVE_INVALID", "zip root directory must be a UUID scan id", roots);
+        }
+        if (requestedScanId != null && !archiveScanId.equals(requestedScanId)) {
+            throw badRequest(
+                    "SCAN_ARCHIVE_INVALID",
+                    "zip root directory must match scan_id",
+                    Map.of("expected", requestedScanId, "actual", archiveScanId)
+            );
+        }
+        return new ArchiveRoot(archiveScanId, rootName);
     }
 
     private void validateRequiredFiles(List<ZipArchiveEntry> entries, String zipRoot) {
@@ -191,6 +234,40 @@ public class ScanArchiveStorageService {
         return name;
     }
 
+    private void replaceScanRoot(Path extractedScanRoot, Path scanRoot, boolean force) throws IOException {
+        if (!Files.exists(extractedScanRoot)) {
+            throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "SCAN_ARCHIVE_STORE_FAILED", "extracted scan root is missing");
+        }
+        Files.createDirectories(scanRoot.getParent());
+        if (!Files.exists(scanRoot)) {
+            moveDirectory(extractedScanRoot, scanRoot);
+            return;
+        }
+        if (!force) {
+            throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
+        }
+
+        Path backupRoot = scanRoot.resolveSibling(scanRoot.getFileName() + ".backup-" + UUID.randomUUID());
+        moveDirectory(scanRoot, backupRoot);
+        try {
+            moveDirectory(extractedScanRoot, scanRoot);
+            deleteRecursively(backupRoot);
+        } catch (IOException | RuntimeException e) {
+            if (!Files.exists(scanRoot) && Files.exists(backupRoot)) {
+                moveDirectory(backupRoot, scanRoot);
+            }
+            throw e;
+        }
+    }
+
+    private void moveDirectory(Path source, Path target) throws IOException {
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
     private MessageDigest sha256() {
         try {
             return MessageDigest.getInstance("SHA-256");
@@ -240,5 +317,8 @@ public class ScanArchiveStorageService {
     }
 
     private record StoredUpload(String sha256, long size) {
+    }
+
+    private record ArchiveRoot(UUID scanId, String rootName) {
     }
 }
