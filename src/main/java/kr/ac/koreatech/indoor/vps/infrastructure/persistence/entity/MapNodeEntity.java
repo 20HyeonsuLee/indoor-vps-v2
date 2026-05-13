@@ -41,6 +41,25 @@ public class MapNodeEntity {
     protected MapNodeEntity() {
     }
 
+    public static MapNodeEntity create(
+            UUID nodeId,
+            UUID scanId,
+            UUID buildJobId,
+            NodeType nodeType,
+            Point geom,
+            String label
+    ) {
+        MapNodeEntity entity = new MapNodeEntity();
+        entity.nodeId = nodeId;
+        entity.scanId = scanId;
+        entity.buildJobId = buildJobId;
+        entity.nodeType = nodeType;
+        entity.geom = geom;
+        entity.label = label;
+        entity.stale = false;
+        return entity;
+    }
+
     public UUID getNodeId() {
         return nodeId;
     }

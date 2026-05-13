@@ -48,6 +48,29 @@ public class MapEdgeEntity {
     protected MapEdgeEntity() {
     }
 
+    public static MapEdgeEntity create(
+            UUID edgeId,
+            UUID scanId,
+            UUID buildJobId,
+            UUID fromNodeId,
+            UUID toNodeId,
+            EdgeType edgeType,
+            LineString geom,
+            double lengthM
+    ) {
+        MapEdgeEntity entity = new MapEdgeEntity();
+        entity.edgeId = edgeId;
+        entity.scanId = scanId;
+        entity.buildJobId = buildJobId;
+        entity.fromNodeId = fromNodeId;
+        entity.toNodeId = toNodeId;
+        entity.edgeType = edgeType;
+        entity.geom = geom;
+        entity.lengthM = lengthM;
+        entity.stale = false;
+        return entity;
+    }
+
     public UUID getEdgeId() {
         return edgeId;
     }
