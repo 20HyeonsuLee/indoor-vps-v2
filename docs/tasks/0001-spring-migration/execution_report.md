@@ -309,3 +309,25 @@ notes:
   - "Test runtime uses indoor.persistence=test, excludes datasource/JPA/Flyway, and imports TestApplicationBeans."
   - "Stale Python bridge not-implemented helper and old build-worker bridge wording were removed after Cycle 10 eval."
 ```
+
+## Cycle 12 Result
+
+```yaml
+cycles_run: 12
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Migrated the Spring Boot project from Maven to Gradle Kotlin DSL, generated Gradle wrapper, and removed Maven wrapper/pom files."
+verification:
+  - "python3 -m py_compile scripts/python_bridge/bridge_entry.py"
+  - "./gradlew clean test bootJar --no-daemon"
+  - "git diff --check"
+  - "SERVER_PORT=18095 DATABASE_URL=jdbc:postgresql://127.0.0.1:55432/indoor_v2_gradle_smoke_1778688936 FLYWAY_ENABLED=true PYTHON_BRIDGE_ENABLED=false BUILD_WORKER_ENABLED=false ./gradlew bootRun --no-daemon"
+  - "curl /openapi.json returned 18 paths; /docs returned 302 to /swagger-ui/index.html"
+notes:
+  - "Build definition is now build.gradle.kts plus settings.gradle.kts."
+  - "Gradle wrapper version is 8.14.3."
+  - "Maven files pom.xml, mvnw, mvnw.cmd, and .mvn wrapper metadata were removed."
+  - "Cycles 1-11 list Maven commands as historical evidence from before this build-tool migration; current commands use Gradle."
+```

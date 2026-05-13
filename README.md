@@ -11,8 +11,16 @@ replacement.
 
 - Java: 21
 - Framework: Spring Boot
+- Build: Gradle Kotlin DSL (`build.gradle.kts`)
 - Database: PostgreSQL + PostGIS
 - API docs: OpenAPI/Swagger
+
+## Local run
+
+```bash
+./gradlew test
+./gradlew bootRun
+```
 
 ## Harness
 
