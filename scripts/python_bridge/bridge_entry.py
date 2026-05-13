@@ -2,8 +2,8 @@
 """Minimal stdin/stdout bridge for Java-owned HTTP runtime.
 
 The Java server owns API routing and validation. Commands implemented here are
-the compatibility boundary for Python-only workloads such as SuperPoint,
-and RTAB-Map reprocess.
+the compatibility boundary for Python-only workloads such as SuperPoint and
+RTAB-Map reprocess.
 """
 from __future__ import annotations
 
@@ -65,17 +65,6 @@ def dispatch(command: str, payload: dict[str, object]) -> int:
             return 0
         return merge_scan(payload)
     return fail("BRIDGE_UNKNOWN_COMMAND", f"unknown bridge command: {command}", {"commands": list(COMMANDS)})
-
-
-def contract_or_not_implemented(command: str, payload: dict[str, object]) -> int:
-    if payload.get("contractOnly") is True:
-        print_json({"ok": True, "command": command})
-        return 0
-    return fail(
-        "BRIDGE_COMMAND_NOT_IMPLEMENTED",
-        f"bridge command is not implemented yet: {command}",
-        {"command": command},
-    )
 
 
 def validate_localize(payload: dict[str, object]) -> None:

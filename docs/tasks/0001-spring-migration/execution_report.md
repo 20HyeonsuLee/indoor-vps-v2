@@ -149,7 +149,7 @@ verification:
   - "live smoke: create building/floor, upload scan, merge active chunk, enqueue process, read process status, read floor map, search POIs, delete temp data"
 notes:
   - "NavigationJpaService reduced from 451 lines to 357 lines; NavigationGraphService owns graph construction and JGraphT Dijkstra routing."
-  - "PythonBridgeContractTest now verifies BRIDGE_COMMAND_NOT_IMPLEMENTED is preserved by Java instead of being collapsed into PYTHON_BRIDGE_FAILED."
+  - "PythonBridgeContractTest verified typed bridge stderr errors are preserved by Java instead of being collapsed into PYTHON_BRIDGE_FAILED."
   - "Next candidate: add focused NavigationGraphService unit tests for shortest path, reverse traversal, unreachable route, missing node, duplicate edge."
 ```
 
@@ -307,4 +307,5 @@ verification:
 notes:
   - "Production runtime no longer has an indoor.persistence=memory service implementation."
   - "Test runtime uses indoor.persistence=test, excludes datasource/JPA/Flyway, and imports TestApplicationBeans."
+  - "Stale Python bridge not-implemented helper and old build-worker bridge wording were removed after Cycle 10 eval."
 ```
