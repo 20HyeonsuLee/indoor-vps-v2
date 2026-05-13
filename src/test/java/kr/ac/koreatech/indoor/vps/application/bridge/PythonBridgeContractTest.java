@@ -1,6 +1,7 @@
 package kr.ac.koreatech.indoor.vps.application.bridge;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +9,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import kr.ac.koreatech.indoor.vps.api.ClientApiException;
+import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.LocalizeBridgeRequest;
+import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import org.junit.jupiter.api.Test;
 
 class PythonBridgeContractTest {
@@ -69,6 +73,26 @@ class PythonBridgeContractTest {
 
         assertThat(merge.exitCode()).isZero();
         assertThat(build.exitCode()).isZero();
+    }
+
+    @Test
+    void javaBridgeClientPreservesTypedPythonErrors() {
+        IndoorProperties properties = new IndoorProperties();
+        properties.getPython().setEnabled(true);
+        properties.getPython().setExecutable("python3");
+        properties.getPython().setBridgeScript(Path.of("scripts/python_bridge/bridge_entry.py"));
+        PythonBridgeClient client = new PythonBridgeClient(properties, objectMapper);
+
+        assertThatThrownBy(() -> client.localize(new LocalizeBridgeRequest(
+                "building-1",
+                List.of("/tmp/frame.jpg"),
+                "/tmp/storage"
+        )))
+                .isInstanceOfSatisfying(ClientApiException.class, error -> {
+                    assertThat(error.code()).isEqualTo("BRIDGE_COMMAND_NOT_IMPLEMENTED");
+                    assertThat(error.detail()).containsEntry("command", "localize");
+                    assertThat(error.detail()).containsEntry("exitCode", 2);
+                });
     }
 
     private BridgeResult call(String command, Map<String, Object> payload) throws Exception {

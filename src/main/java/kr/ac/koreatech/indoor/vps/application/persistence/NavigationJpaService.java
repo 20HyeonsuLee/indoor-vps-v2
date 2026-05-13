@@ -2,18 +2,15 @@ package kr.ac.koreatech.indoor.vps.application.persistence;
 
 import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.PriorityQueue;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.api.ClientApiException;
+import kr.ac.koreatech.indoor.vps.application.persistence.NavigationGraphService.RouteEdge;
+import kr.ac.koreatech.indoor.vps.application.persistence.NavigationGraphService.RouteResult;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.FloorScanEntity;
@@ -27,7 +24,6 @@ import kr.ac.koreatech.indoor.vps.infrastructure.persistence.repository.PoiCanon
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Point;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,19 +36,22 @@ public class NavigationJpaService {
     private final MapNodeRepository mapNodeRepository;
     private final MapEdgeRepository mapEdgeRepository;
     private final PoiCanonicalRepository poiCanonicalRepository;
+    private final NavigationGraphService graphService;
 
     public NavigationJpaService(
             BuildingJpaService buildingService,
             BuildJobRepository buildJobRepository,
             MapNodeRepository mapNodeRepository,
             MapEdgeRepository mapEdgeRepository,
-            PoiCanonicalRepository poiCanonicalRepository
+            PoiCanonicalRepository poiCanonicalRepository,
+            NavigationGraphService graphService
     ) {
         this.buildingService = buildingService;
         this.buildJobRepository = buildJobRepository;
         this.mapNodeRepository = mapNodeRepository;
         this.mapEdgeRepository = mapEdgeRepository;
         this.poiCanonicalRepository = poiCanonicalRepository;
+        this.graphService = graphService;
     }
 
     public FloorPathResponse getFloorPath(UUID floorId) {
@@ -120,9 +119,11 @@ public class NavigationJpaService {
         List<PathStepResponse> steps = new ArrayList<>();
         steps.add(new PathStepResponse(1, request.startFloorLevel(), start, "Start", null));
         if (request.startScanId() != null && target.routeNodeId() != null) {
-            UUID nearestNode = nearestNode(request.startScanId(), request.startX(), request.startY(), request.startZ());
+            List<MapNodeEntity> nodes = nodes(request.startScanId());
+            List<MapEdgeEntity> edges = edges(request.startScanId());
+            UUID nearestNode = graphService.nearestNode(nodes, request.startX(), request.startY(), request.startZ());
             if (nearestNode != null) {
-                RouteResult route = routeBetween(request.startScanId(), nearestNode, target.routeNodeId());
+                RouteResult route = graphService.routeBetween(nodes, edges, nearestNode, target.routeNodeId());
                 if (!route.nodes().isEmpty()) {
                     int stepNumber = 2;
                     for (MapNodeEntity node : route.nodes()) {
@@ -166,7 +167,7 @@ public class NavigationJpaService {
             return metadata("floorId", floorId, "from", fromNode, "to", toNode, "nodes", List.of(), "edges", List.of());
         }
         UUID scanId = active.get().getScan().getScanId();
-        RouteResult route = routeBetween(scanId, fromNode, toNode);
+        RouteResult route = graphService.routeBetween(nodes(scanId), edges(scanId), fromNode, toNode);
         return metadata(
                 "floorId", floorId,
                 "scanId", scanId,
@@ -190,85 +191,6 @@ public class NavigationJpaService {
         return buildJobRepository.findFirstByScan_ScanIdOrderByEnqueuedAtDesc(scanId)
                 .map(BuildJobEntity::getBuildJobId)
                 .orElse(null);
-    }
-
-    private UUID nearestNode(UUID scanId, double targetX, double targetY, double targetZ) {
-        return nodes(scanId).stream()
-                .min(Comparator.comparingDouble(node -> distance(
-                        x(node.getGeom()),
-                        y(node.getGeom()),
-                        z(node.getGeom()),
-                        targetX,
-                        targetY,
-                        targetZ
-                )))
-                .map(MapNodeEntity::getNodeId)
-                .orElse(null);
-    }
-
-    private RouteResult routeBetween(UUID scanId, UUID fromNode, UUID toNode) {
-        List<MapNodeEntity> nodes = nodes(scanId);
-        Map<UUID, MapNodeEntity> nodeById = new HashMap<>();
-        for (MapNodeEntity node : nodes) {
-            nodeById.put(node.getNodeId(), node);
-        }
-        if (!nodeById.containsKey(fromNode) || !nodeById.containsKey(toNode)) {
-            throw notFound("ROUTE_NODE_NOT_FOUND", "route node not found");
-        }
-
-        List<MapEdgeEntity> edges = edges(scanId);
-        Map<UUID, List<RouteEdge>> adjacency = new HashMap<>();
-        for (MapEdgeEntity edge : edges) {
-            RouteEdge forward = new RouteEdge(edge.getEdgeId(), edge.getFromNodeId(), edge.getToNodeId(), edge.getLengthM(), edge.getEdgeType().name());
-            RouteEdge reverse = forward.reverse();
-            adjacency.computeIfAbsent(forward.fromId(), ignored -> new ArrayList<>()).add(forward);
-            adjacency.computeIfAbsent(reverse.fromId(), ignored -> new ArrayList<>()).add(reverse);
-        }
-
-        Map<UUID, Double> distanceByNode = new HashMap<>();
-        Map<UUID, UUID> previousNode = new HashMap<>();
-        Map<UUID, RouteEdge> previousEdge = new HashMap<>();
-        PriorityQueue<NodeDistance> queue = new PriorityQueue<>(Comparator.comparingDouble(NodeDistance::distance));
-        distanceByNode.put(fromNode, 0.0);
-        queue.add(new NodeDistance(fromNode, 0.0));
-
-        while (!queue.isEmpty()) {
-            NodeDistance current = queue.poll();
-            if (current.distance() > distanceByNode.getOrDefault(current.nodeId(), Double.POSITIVE_INFINITY)) {
-                continue;
-            }
-            if (current.nodeId().equals(toNode)) {
-                break;
-            }
-            for (RouteEdge edge : adjacency.getOrDefault(current.nodeId(), List.of())) {
-                double nextDistance = current.distance() + edge.lengthM();
-                if (nextDistance < distanceByNode.getOrDefault(edge.toId(), Double.POSITIVE_INFINITY)) {
-                    distanceByNode.put(edge.toId(), nextDistance);
-                    previousNode.put(edge.toId(), current.nodeId());
-                    previousEdge.put(edge.toId(), edge);
-                    queue.add(new NodeDistance(edge.toId(), nextDistance));
-                }
-            }
-        }
-
-        if (!distanceByNode.containsKey(toNode)) {
-            return new RouteResult(List.of(), List.of(), 0.0);
-        }
-
-        ArrayDeque<MapNodeEntity> routeNodes = new ArrayDeque<>();
-        ArrayDeque<RouteEdge> routeEdges = new ArrayDeque<>();
-        UUID cursor = toNode;
-        routeNodes.addFirst(nodeById.get(cursor));
-        while (!cursor.equals(fromNode)) {
-            RouteEdge edge = previousEdge.get(cursor);
-            if (edge == null) {
-                return new RouteResult(List.of(), List.of(), 0.0);
-            }
-            routeEdges.addFirst(edge);
-            cursor = previousNode.get(cursor);
-            routeNodes.addFirst(nodeById.get(cursor));
-        }
-        return new RouteResult(List.copyOf(routeNodes), List.copyOf(routeEdges), distanceByNode.get(toNode));
     }
 
     private PoiRouteTarget findPoiTarget(UUID buildingId, String destinationName) {
@@ -427,23 +349,7 @@ public class NavigationJpaService {
         return result;
     }
 
-    private ClientApiException notFound(String code, String message) {
-        return new ClientApiException(HttpStatus.NOT_FOUND, code, message);
-    }
-
     private record Bounds(double minX, double minY, double maxX, double maxY) {
-    }
-
-    private record NodeDistance(UUID nodeId, double distance) {
-    }
-
-    private record RouteEdge(UUID id, UUID fromId, UUID toId, double lengthM, String type) {
-        RouteEdge reverse() {
-            return new RouteEdge(id, toId, fromId, lengthM, type);
-        }
-    }
-
-    private record RouteResult(List<MapNodeEntity> nodes, List<RouteEdge> edges, double totalDistance) {
     }
 
     private record PoiRouteTarget(UUID routeNodeId, double x, double y, double z, Integer floorLevel) {

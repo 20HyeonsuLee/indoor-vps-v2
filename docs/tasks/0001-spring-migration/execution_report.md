@@ -30,6 +30,8 @@ or worker subprocesses. Back up the existing Python code first.
 - [x] Replace contract scaffold with Spring Data JPA persistence
 - [x] Split JPA facade into SRP application services
 - [x] Add typed Python bridge command contracts
+- [x] Replace hand-rolled route search with JGraphT
+- [x] Preserve typed Python bridge errors in Java envelope
 
 ## Cycle 1 Result
 
@@ -118,4 +120,27 @@ notes:
   - "JpaVpsService is now 161 lines; domain service sizes: Building 197, Scan 308, Navigation 451, POI 83."
   - "Python bridge commands localize/merge_scan/build_floor_map validate typed payloads and return explicit BRIDGE_COMMAND_NOT_IMPLEMENTED until Python-only compute is wired."
   - "Next candidate: split NavigationJpaService route algorithm/helper and preserve typed bridge error codes through the Java envelope."
+```
+
+## Cycle 4 Result
+
+```yaml
+cycles_run: 4
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Added JGraphT and moved route graph search into NavigationGraphService; PythonBridgeClient now preserves typed BRIDGE_* stderr error codes in ClientApiException envelopes."
+  - phase: eval
+    agent: eval-implementation
+    summary: "PASS. JGraphT usage verified, hand-rolled Dijkstra removed, bridge typed error preservation verified."
+verification:
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "SERVER_PORT=18087 FLYWAY_ENABLED=false ./mvnw spring-boot:run -q"
+  - "live smoke: create building/floor, upload scan, merge active chunk, enqueue process, read process status, read floor map, search POIs, delete temp data"
+notes:
+  - "NavigationJpaService reduced from 451 lines to 357 lines; NavigationGraphService owns graph construction and JGraphT Dijkstra routing."
+  - "PythonBridgeContractTest now verifies BRIDGE_COMMAND_NOT_IMPLEMENTED is preserved by Java instead of being collapsed into PYTHON_BRIDGE_FAILED."
+  - "Next candidate: add focused NavigationGraphService unit tests for shortest path, reverse traversal, unreachable route, missing node, duplicate edge."
 ```
