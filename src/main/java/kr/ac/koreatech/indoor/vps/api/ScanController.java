@@ -5,7 +5,7 @@ import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.application.InMemoryVpsService;
+import kr.ac.koreatech.indoor.vps.application.VpsService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,9 +22,9 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/v1")
 @Tag(name = "스캔/처리")
 public class ScanController {
-    private final InMemoryVpsService service;
+    private final VpsService service;
 
-    public ScanController(InMemoryVpsService service) {
+    public ScanController(VpsService service) {
         this.service = service;
     }
 

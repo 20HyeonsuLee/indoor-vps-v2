@@ -27,6 +27,7 @@ or worker subprocesses. Back up the existing Python code first.
 - [x] Port API contracts
 - [x] Add Python bridge for unavoidable Python workloads
 - [x] Verify build and OpenAPI surface
+- [x] Replace contract scaffold with Spring Data JPA persistence
 
 ## Cycle 1 Result
 
@@ -62,3 +63,31 @@ post_eval_fixes:
 - `backups/indoor-pathfinding-backend-python-20260513-215226.tar.gz`
 - `docs/tasks/0001-spring-migration/python-openapi-current.json`
 - `docs/tasks/0001-spring-migration/migration_plan.md`
+
+## Cycle 2 Result
+
+```yaml
+cycles_run: 2
+verdict: PASS
+agent_trace:
+  - phase: plan
+    agent: plan-architect
+    summary: "Replace in-memory service with PostgreSQL/PostGIS-backed behavior and keep Python for SLAM/RTAB-Map/ML compute."
+  - phase: build
+    agent: main-session
+    summary: "Switched controllers to VpsService, added Spring Data JPA entities/repositories, Hibernate Spatial mapping, JPA-backed API service, and explicit persistence mode selection."
+  - phase: eval
+    agent: eval-implementation
+    summary: "PASS_WITH_WARN before baseline fix; warning was missing poi_canonical display_point/display metadata in Flyway baseline."
+verification:
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "SERVER_PORT=18084 FLYWAY_ENABLED=false ./mvnw spring-boot:run -q"
+  - "live smoke: create building/floor, upload scan, enqueue process, read process status, read floor map, list POIs, delete temp data"
+  - "database smoke: scan_ingest count=1 and build_job count=1 for uploaded scan before cleanup"
+  - "fresh Flyway smoke: temp PostgreSQL database, FLYWAY_ENABLED=true, Spring Data JPA startup, upload/process/map API smoke, then DROP DATABASE"
+notes:
+  - "Direct JdbcTemplate service attempt was removed after user feedback; persistence now uses Spring Data JPA and Hibernate Spatial/JTS."
+  - "Test runtime sets indoor.persistence=memory; runtime default is indoor.persistence=jpa."
+  - "Eval warning fixed by aligning poi_canonical baseline with Python schema display_point/display_area_id/source_mark_ids/cluster_method/created_at columns."
+```

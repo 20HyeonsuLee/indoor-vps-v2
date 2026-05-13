@@ -18,12 +18,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import kr.ac.koreatech.indoor.vps.api.ClientApiException;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
-public class InMemoryVpsService {
+@ConditionalOnProperty(name = "indoor.persistence", havingValue = "memory")
+public class InMemoryVpsService implements VpsService {
     private final IndoorProperties properties;
     private final Map<UUID, BuildingRecord> buildings = new ConcurrentHashMap<>();
     private final Map<UUID, FloorRecord> floors = new ConcurrentHashMap<>();
@@ -35,6 +37,7 @@ public class InMemoryVpsService {
         this.properties = properties;
     }
 
+    @Override
     public List<BuildingResponse> listBuildings(String statusFilter) {
         return buildings.values().stream()
                 .filter(building -> statusFilter == null || building.status().name().equals(statusFilter))
@@ -43,6 +46,7 @@ public class InMemoryVpsService {
                 .toList();
     }
 
+    @Override
     public BuildingResponse createBuilding(BuildingCreateRequest request) {
         UUID id = UUID.randomUUID();
         Instant now = Instant.now();
@@ -60,6 +64,7 @@ public class InMemoryVpsService {
         return toBuildingResponse(record);
     }
 
+    @Override
     public BuildingDetailResponse getBuilding(UUID buildingId) {
         BuildingRecord building = requireBuilding(buildingId);
         return new BuildingDetailResponse(
@@ -76,6 +81,7 @@ public class InMemoryVpsService {
         );
     }
 
+    @Override
     public BuildingResponse updateBuilding(UUID buildingId, BuildingUpdateRequest request) {
         BuildingRecord current = requireBuilding(buildingId);
         BuildingRecord updated = new BuildingRecord(
@@ -92,6 +98,7 @@ public class InMemoryVpsService {
         return toBuildingResponse(updated);
     }
 
+    @Override
     public void deleteBuilding(UUID buildingId) {
         requireBuilding(buildingId);
         buildings.remove(buildingId);
@@ -99,6 +106,7 @@ public class InMemoryVpsService {
         pois.values().removeIf(poi -> buildingId.equals(poi.buildingId()));
     }
 
+    @Override
     public BuildingResponse patchStatus(UUID buildingId, BuildingStatusRequest request) {
         BuildingRecord current = requireBuilding(buildingId);
         BuildingRecord updated = new BuildingRecord(
@@ -115,6 +123,7 @@ public class InMemoryVpsService {
         return toBuildingResponse(updated);
     }
 
+    @Override
     public List<FloorResponse> listFloors(UUID buildingId) {
         requireBuilding(buildingId);
         return floors.values().stream()
@@ -124,6 +133,7 @@ public class InMemoryVpsService {
                 .toList();
     }
 
+    @Override
     public FloorResponse createFloor(UUID buildingId, FloorCreateRequest request) {
         requireBuilding(buildingId);
         UUID id = UUID.randomUUID();
@@ -142,10 +152,12 @@ public class InMemoryVpsService {
         return toFloorResponse(floor);
     }
 
+    @Override
     public FloorResponse getFloor(UUID floorId) {
         return toFloorResponse(requireFloor(floorId));
     }
 
+    @Override
     public FloorResponse updateFloor(UUID floorId, FloorUpdateRequest request) {
         FloorRecord current = requireFloor(floorId);
         FloorRecord updated = new FloorRecord(
@@ -162,6 +174,7 @@ public class InMemoryVpsService {
         return toFloorResponse(updated);
     }
 
+    @Override
     public void deleteFloor(UUID floorId) {
         requireFloor(floorId);
         floors.remove(floorId);
@@ -169,6 +182,7 @@ public class InMemoryVpsService {
         pois.values().removeIf(poi -> floorId.equals(poi.floorId()));
     }
 
+    @Override
     public FloorPathResponse getFloorPath(UUID floorId) {
         FloorRecord floor = requireFloor(floorId);
         return new FloorPathResponse(
@@ -181,6 +195,7 @@ public class InMemoryVpsService {
         );
     }
 
+    @Override
     public FloorMapResponse getFloorMap(UUID floorId) {
         FloorRecord floor = requireFloor(floorId);
         UUID scanId = floor.activeScanId() != null ? floor.activeScanId() : UUID.randomUUID();
@@ -201,6 +216,7 @@ public class InMemoryVpsService {
         );
     }
 
+    @Override
     public ScanChunkResponse uploadScanChunk(
             UUID floorId,
             MultipartFile upload,
@@ -245,6 +261,7 @@ public class InMemoryVpsService {
         return toScanChunkResponse(scan);
     }
 
+    @Override
     public List<ScanChunkResponse> listScanChunks(UUID floorId) {
         requireFloor(floorId);
         return scans.values().stream()
@@ -254,6 +271,7 @@ public class InMemoryVpsService {
                 .toList();
     }
 
+    @Override
     public void deleteScanChunk(UUID floorId, UUID chunkId) {
         requireFloor(floorId);
         ScanRecord scan = scans.get(chunkId);
@@ -263,6 +281,7 @@ public class InMemoryVpsService {
         scans.remove(chunkId);
     }
 
+    @Override
     public MergedScanResponse mergeScans(UUID floorId, List<UUID> chunkIds) {
         FloorRecord floor = requireFloor(floorId);
         UUID activeScanId = floor.activeScanId();
@@ -276,21 +295,25 @@ public class InMemoryVpsService {
         return new MergedScanResponse(floorId, activeScanId, "MERGED");
     }
 
+    @Override
     public MergedScanResponse mergeStatus(UUID floorId) {
         FloorRecord floor = requireFloor(floorId);
         return new MergedScanResponse(floorId, floor.activeScanId(), floor.activeScanId() == null ? "IDLE" : "MERGED");
     }
 
+    @Override
     public ProcessingStatusResponse process(UUID floorId) {
         FloorRecord floor = requireFloor(floorId);
         return new ProcessingStatusResponse(floorId, floor.activeScanId(), UUID.randomUUID(), "QUEUED", 0.0, null);
     }
 
+    @Override
     public ProcessingStatusResponse processStatus(UUID floorId) {
         FloorRecord floor = requireFloor(floorId);
         return new ProcessingStatusResponse(floorId, floor.activeScanId(), null, "IDLE", null, null);
     }
 
+    @Override
     public PathfindingResponse pathfinding(UUID buildingId, PathfindingRequest request) {
         requireBuilding(buildingId);
         RoutePosition position = new RoutePosition(
@@ -312,6 +335,7 @@ public class InMemoryVpsService {
         );
     }
 
+    @Override
     public Map<String, Object> floorRoute(UUID floorId, UUID fromNode, UUID toNode) {
         requireFloor(floorId);
         Map<String, Object> route = new HashMap<>();
@@ -323,6 +347,7 @@ public class InMemoryVpsService {
         return route;
     }
 
+    @Override
     public List<POIResponse> listPois(UUID buildingId) {
         requireBuilding(buildingId);
         return pois.values().stream()
@@ -331,6 +356,7 @@ public class InMemoryVpsService {
                 .toList();
     }
 
+    @Override
     public List<POIResponse> searchPois(UUID buildingId, String query) {
         String q = query == null ? "" : query.toLowerCase();
         return listPois(buildingId).stream()

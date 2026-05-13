@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.application.InMemoryVpsService;
+import kr.ac.koreatech.indoor.vps.application.VpsService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,9 +22,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 @Tag(name = "층")
 public class FloorController {
-    private final InMemoryVpsService service;
+    private final VpsService service;
 
-    public FloorController(InMemoryVpsService service) {
+    public FloorController(VpsService service) {
         this.service = service;
     }
 

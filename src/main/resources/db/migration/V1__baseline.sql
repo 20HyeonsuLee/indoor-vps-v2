@@ -1,6 +1,37 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS vector;
 
+DO $$ BEGIN
+    CREATE TYPE build_state AS ENUM ('not_started', 'pending', 'running', 'succeeded', 'failed', 'cancelled');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE node_type AS ENUM ('junction', 'endpoint', 'corridor', 'poi', 'poi_attach');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE edge_type AS ENUM ('skeleton', 'poi_spur');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE build_step AS ENUM (
+        'init', 'floor_seg', 'back_project', 'walkable_grid', 'skeleton',
+        'node_placement', 'poi_projection', 'quality_gate', 'persist', 'done'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE build_failure_reason AS ENUM (
+        'walkable_coverage_low', 'graph_disconnected', 'model_load_failed',
+        'intrinsics_missing', 'rtabmap_data_not_ready', 'internal'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS building (
     building_id UUID PRIMARY KEY,
     name TEXT NOT NULL,
@@ -30,14 +61,14 @@ CREATE TABLE IF NOT EXISTS scan_ingest (
     replaced_at TIMESTAMPTZ,
     storage_path TEXT NOT NULL,
     device_info JSONB,
-    build_state TEXT NOT NULL DEFAULT 'not_started',
+    build_state build_state NOT NULL DEFAULT 'not_started',
     build_job_id UUID
 );
 
 CREATE TABLE IF NOT EXISTS floor_scan (
     floor_scan_id UUID PRIMARY KEY,
     floor_id UUID NOT NULL REFERENCES building_floor(floor_id) ON DELETE CASCADE,
-    scan_id UUID NOT NULL,
+    scan_id UUID NOT NULL REFERENCES scan_ingest(scan_id) ON DELETE CASCADE,
     file_name TEXT,
     file_size BIGINT,
     status TEXT NOT NULL,
@@ -47,11 +78,13 @@ CREATE TABLE IF NOT EXISTS floor_scan (
     CONSTRAINT uq_floor_scan_scan UNIQUE(floor_id, scan_id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_floor_scan_one_active ON floor_scan(floor_id) WHERE active = true;
+
 CREATE TABLE IF NOT EXISTS build_job (
     build_job_id UUID PRIMARY KEY,
     scan_id UUID NOT NULL REFERENCES scan_ingest(scan_id) ON DELETE CASCADE,
-    state TEXT NOT NULL DEFAULT 'pending',
-    current_step TEXT,
+    state build_state NOT NULL DEFAULT 'pending',
+    current_step build_step,
     progress DOUBLE PRECISION,
     enqueued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     started_at TIMESTAMPTZ,
@@ -60,15 +93,16 @@ CREATE TABLE IF NOT EXISTS build_job (
     worker_id TEXT,
     attempt_count INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
-    failure_reason TEXT,
-    failure_detail JSONB
+    failure_reason build_failure_reason,
+    failure_detail TEXT,
+    counts JSONB
 );
 
 CREATE TABLE IF NOT EXISTS map_node (
     node_id UUID PRIMARY KEY,
     scan_id UUID NOT NULL REFERENCES scan_ingest(scan_id) ON DELETE CASCADE,
     build_job_id UUID NOT NULL REFERENCES build_job(build_job_id) ON DELETE CASCADE,
-    node_type TEXT NOT NULL,
+    node_type node_type NOT NULL,
     geom geometry(PointZ, 0) NOT NULL,
     label TEXT,
     source_ref JSONB,
@@ -81,7 +115,7 @@ CREATE TABLE IF NOT EXISTS map_edge (
     build_job_id UUID NOT NULL REFERENCES build_job(build_job_id) ON DELETE CASCADE,
     from_node_id UUID NOT NULL REFERENCES map_node(node_id) ON DELETE CASCADE,
     to_node_id UUID NOT NULL REFERENCES map_node(node_id) ON DELETE CASCADE,
-    edge_type TEXT NOT NULL,
+    edge_type edge_type NOT NULL,
     geom geometry(LineStringZ, 0) NOT NULL,
     length_m DOUBLE PRECISION NOT NULL,
     is_stale BOOLEAN NOT NULL DEFAULT false
@@ -98,8 +132,13 @@ CREATE TABLE IF NOT EXISTS poi_canonical (
     name TEXT,
     world_pose geometry(PointZ, 0),
     route_node_id UUID REFERENCES map_node(node_id) ON DELETE SET NULL,
+    display_point geometry(PointZ, 0),
+    display_area_id UUID,
+    source_mark_ids JSONB,
     needs_review BOOLEAN NOT NULL DEFAULT false,
-    llm_confidence DOUBLE PRECISION
+    cluster_method TEXT,
+    llm_confidence DOUBLE PRECISION,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS vertical_connector (
