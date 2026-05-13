@@ -1,6 +1,6 @@
 package kr.ac.koreatech.indoor.vps.api;
 
-import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.ScanDtos.*;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;

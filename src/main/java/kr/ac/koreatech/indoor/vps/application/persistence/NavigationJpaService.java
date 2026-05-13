@@ -1,6 +1,7 @@
 package kr.ac.koreatech.indoor.vps.application.persistence;
 
-import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.MapDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.NavigationDtos.*;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

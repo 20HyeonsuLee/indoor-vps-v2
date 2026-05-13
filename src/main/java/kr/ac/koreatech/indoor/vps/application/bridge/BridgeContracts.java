@@ -53,19 +53,4 @@ public final class BridgeContracts {
             Map<String, Object> diagnostics
     ) {
     }
-
-    public record BuildFloorMapBridgeRequest(
-            UUID floorId,
-            UUID scanId,
-            UUID buildJobId,
-            String scanPath,
-            String outputDir
-    ) {
-    }
-
-    public record BuildFloorMapBridgeResponse(
-            String artifactPath,
-            Map<String, Object> diagnostics
-    ) {
-    }
 }

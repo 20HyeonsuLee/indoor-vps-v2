@@ -1,6 +1,6 @@
 package kr.ac.koreatech.indoor.vps.application;
 
-import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.SlamDtos.*;
 
 import java.io.IOException;
 import java.nio.file.Files;

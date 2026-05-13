@@ -126,7 +126,7 @@ verification:
   - "live smoke: create building/floor, upload scan, merge active chunk, enqueue process, read process status, read floor map, search POIs, delete temp data"
 notes:
   - "JpaVpsService is now 161 lines; domain service sizes: Building 197, Scan 308, Navigation 451, POI 83."
-  - "Python bridge commands localize/merge_scan/build_floor_map validate typed payloads and return explicit BRIDGE_COMMAND_NOT_IMPLEMENTED until Python-only compute is wired."
+  - "Python bridge commands localize/merge_scan validate typed payloads and return explicit typed errors until Python-only compute is wired."
   - "Next candidate: split NavigationJpaService route algorithm/helper and preserve typed bridge error codes through the Java envelope."
 ```
 
@@ -193,7 +193,7 @@ notes:
   - "commons-compress 1.28.0 is pinned because Spring Boot 4.0.6 does not manage this dependency."
   - "Scan upload now requires a valid ZIP with root {scanId}/ plus rtabmap.db and scan_metadata.db."
   - "Java/JPA resolves active floor maps; Python receives image paths and floor-map DB paths, avoiding a second SQLAlchemy DB connection for localization."
-  - "Next candidate: wire merge_scan/build_floor_map bridge commands to RTAB-Map reprocess and the legacy build worker boundary."
+  - "Next candidate: wire merge_scan bridge command to RTAB-Map reprocess and move the build worker lifecycle into Java."
 post_eval_fixes:
   - "force=true archive replacement now validates and extracts into a temp directory before replacing the existing scan root."
   - "scan_id can be omitted; the JPA upload path resolves it from the ZIP root UUID."
@@ -270,4 +270,23 @@ verification:
 notes:
   - "build_job.locked_at and worker_id are now mapped and populated while running, then cleared on success/failure."
   - "Graph replacement is committed only in the success transaction. If map_nodes/map_edges replacement fails, that transaction rolls back before a separate failure-status transaction runs."
+```
+
+## Cycle 10 Result
+
+```yaml
+cycles_run: 10
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Split the monolithic ApiDtos holder into domain DTO containers and removed the unused build_floor_map bridge command after Java build worker ownership was established."
+verification:
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "python3 -m py_compile scripts/python_bridge/bridge_entry.py"
+  - "git diff --check"
+notes:
+  - "DTOs are now grouped by API domain: Common, Building, Floor, Passage, Map, Navigation, Scan, POI, and SLAM."
+  - "Python bridge now exposes only active commands: health, localize, merge_scan."
 ```

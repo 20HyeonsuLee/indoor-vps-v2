@@ -14,7 +14,7 @@ from pathlib import Path
 import sys
 
 
-COMMANDS = ("health", "localize", "merge_scan", "build_floor_map")
+COMMANDS = ("health", "localize", "merge_scan")
 
 
 class BridgeContractError(ValueError):
@@ -64,9 +64,6 @@ def dispatch(command: str, payload: dict[str, object]) -> int:
             print_json({"ok": True, "command": command})
             return 0
         return merge_scan(payload)
-    if command == "build_floor_map":
-        validate_build_floor_map(payload)
-        return contract_or_not_implemented(command, payload)
     return fail("BRIDGE_UNKNOWN_COMMAND", f"unknown bridge command: {command}", {"commands": list(COMMANDS)})
 
 
@@ -93,14 +90,6 @@ def validate_merge_scan(payload: dict[str, object]) -> None:
     require_string(payload, "scanId")
     require_string(payload, "outputDir")
     require_string_list(payload, "sourcePaths", min_items=1)
-
-
-def validate_build_floor_map(payload: dict[str, object]) -> None:
-    require_string(payload, "floorId")
-    require_string(payload, "scanId")
-    require_string(payload, "buildJobId")
-    require_string(payload, "scanPath")
-    require_string(payload, "outputDir")
 
 
 def require_string(payload: dict[str, object], key: str) -> str:

@@ -1,6 +1,6 @@
 package kr.ac.koreatech.indoor.vps.application.persistence;
 
-import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.PoiDtos.*;
 
 import java.util.List;
 import java.util.Map;

@@ -10,8 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import kr.ac.koreatech.indoor.vps.api.ClientApiException;
-import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.BuildFloorMapBridgeRequest;
-import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.BuildFloorMapBridgeResponse;
 import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.HealthBridgeResponse;
 import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.LocalizeBridgeResponse;
@@ -41,10 +39,6 @@ public class PythonBridgeClient {
 
     public MergeScanBridgeResponse mergeScan(MergeScanBridgeRequest request) {
         return call(BridgeCommand.MERGE_SCAN, request, MergeScanBridgeResponse.class);
-    }
-
-    public BuildFloorMapBridgeResponse buildFloorMap(BuildFloorMapBridgeRequest request) {
-        return call(BridgeCommand.BUILD_FLOOR_MAP, request, BuildFloorMapBridgeResponse.class);
     }
 
     public JsonNode callJson(String command, Map<String, Object> payload) {

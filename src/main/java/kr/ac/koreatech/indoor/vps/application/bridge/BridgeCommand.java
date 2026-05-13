@@ -3,8 +3,7 @@ package kr.ac.koreatech.indoor.vps.application.bridge;
 public enum BridgeCommand {
     HEALTH("health"),
     LOCALIZE("localize"),
-    MERGE_SCAN("merge_scan"),
-    BUILD_FLOOR_MAP("build_floor_map");
+    MERGE_SCAN("merge_scan");
 
     private final String wireName;
 

@@ -1,6 +1,6 @@
 package kr.ac.koreatech.indoor.vps.api;
 
-import kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.ClientApiErrorResponse;
+import kr.ac.koreatech.indoor.vps.api.dto.CommonDtos.ClientApiErrorResponse;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.TypeMismatchException;

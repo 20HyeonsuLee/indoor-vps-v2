@@ -26,7 +26,7 @@ class PythonBridgeContractTest {
         JsonNode stdout = objectMapper.readTree(result.stdout());
         assertThat(stdout.path("ok").asBoolean()).isTrue();
         assertThat(stdout.path("commands").valueStream().map(JsonNode::asText).toList())
-                .contains("localize", "merge_scan", "build_floor_map");
+                .containsExactly("health", "localize", "merge_scan");
     }
 
     @Test
@@ -61,7 +61,7 @@ class PythonBridgeContractTest {
     }
 
     @Test
-    void mergeAndBuildCommandsValidateSchemas() throws Exception {
+    void mergeCommandValidatesSchema() throws Exception {
         BridgeResult merge = call("merge_scan", Map.of(
                 "floorId", "f1",
                 "scanId", "s1",
@@ -69,17 +69,8 @@ class PythonBridgeContractTest {
                 "outputDir", "/tmp/out",
                 "contractOnly", true
         ));
-        BridgeResult build = call("build_floor_map", Map.of(
-                "floorId", "f1",
-                "scanId", "s1",
-                "buildJobId", "j1",
-                "scanPath", "/tmp/a.db",
-                "outputDir", "/tmp/out",
-                "contractOnly", true
-        ));
 
         assertThat(merge.exitCode()).isZero();
-        assertThat(build.exitCode()).isZero();
     }
 
     @Test

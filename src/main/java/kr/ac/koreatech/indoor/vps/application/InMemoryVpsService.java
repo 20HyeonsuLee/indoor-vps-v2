@@ -1,6 +1,12 @@
 package kr.ac.koreatech.indoor.vps.application;
 
-import static kr.ac.koreatech.indoor.vps.api.dto.ApiDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.BuildingDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.FloorDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.MapDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.NavigationDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.PassageDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.PoiDtos.*;
+import static kr.ac.koreatech.indoor.vps.api.dto.ScanDtos.*;
 
 import java.io.IOException;
 import java.io.InputStream;
