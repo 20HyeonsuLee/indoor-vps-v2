@@ -5,7 +5,7 @@ import static kr.ac.koreatech.indoor.vps.api.dto.PoiDtos.*;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.application.VpsService;
+import kr.ac.koreatech.indoor.vps.application.poi.PoiApplicationService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,9 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 @Tag(name = "POI")
 public class PoiController {
-    private final VpsService service;
+    private final PoiApplicationService service;
 
-    public PoiController(VpsService service) {
+    public PoiController(PoiApplicationService service) {
         this.service = service;
     }
 

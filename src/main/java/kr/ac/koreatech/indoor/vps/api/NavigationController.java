@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.application.VpsService;
+import kr.ac.koreatech.indoor.vps.application.navigation.NavigationApplicationService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,9 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 @Tag(name = "길찾기")
 public class NavigationController {
-    private final VpsService service;
+    private final NavigationApplicationService service;
 
-    public NavigationController(VpsService service) {
+    public NavigationController(NavigationApplicationService service) {
         this.service = service;
     }
 

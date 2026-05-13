@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.application.build;
+package kr.ac.koreatech.indoor.vps.infrastructure.rtabmap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

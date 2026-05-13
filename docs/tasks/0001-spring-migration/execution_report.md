@@ -331,3 +331,27 @@ notes:
   - "Maven files pom.xml, mvnw, mvnw.cmd, and .mvn wrapper metadata were removed."
   - "Cycles 1-11 list Maven commands as historical evidence from before this build-tool migration; current commands use Gradle."
 ```
+
+## Cycle 13 Result
+
+```yaml
+cycles_run: 13
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Reworked the Spring migration into explicit DDD-style boundaries: API controllers now depend on domain-specific application services, domain enums/value objects were moved out of infrastructure, and infrastructure adapters were moved out of application packages."
+verification:
+  - "./gradlew test --no-daemon"
+  - "./gradlew clean test bootJar --no-daemon"
+  - "git diff --check"
+  - "SERVER_PORT=18097 DATABASE_URL=jdbc:postgresql://127.0.0.1:55432/indoor_v2_ddd_smoke_1778690016 FLYWAY_ENABLED=true PYTHON_BRIDGE_ENABLED=false BUILD_WORKER_ENABLED=false ./gradlew bootRun --no-daemon"
+  - "curl /openapi.json returned 18 paths; /docs returned 302 to /swagger-ui/index.html"
+notes:
+  - "Removed the global VpsService/JpaVpsService facade."
+  - "Application services are now grouped as building, floor, scan, navigation, and poi."
+  - "NavigationGraphService is now a pure domain service over RouteNode/RouteEdge/Point3 instead of JPA entities."
+  - "Navigation response mapping, route graph mapping, geometry helpers, and POI route-target resolution were split out of the navigation use-case service."
+  - "Build state, build step, build failure, node type, edge type, and building status now live under domain packages."
+  - "RTAB-Map SQLite reading, scan archive filesystem storage, and JPA localization-map lookup now live under infrastructure packages."
+```

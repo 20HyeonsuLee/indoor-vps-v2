@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.application.persistence;
+package kr.ac.koreatech.indoor.vps.infrastructure.localization;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -10,7 +10,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.BuildState;
+import kr.ac.koreatech.indoor.vps.domain.build.BuildState;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 

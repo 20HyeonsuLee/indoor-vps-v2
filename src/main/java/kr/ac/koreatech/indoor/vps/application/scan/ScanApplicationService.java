@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.application.persistence;
+package kr.ac.koreatech.indoor.vps.application.scan;
 
 import static kr.ac.koreatech.indoor.vps.api.dto.ScanDtos.*;
 
@@ -14,10 +14,12 @@ import kr.ac.koreatech.indoor.vps.api.ClientApiException;
 import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.MergeScanBridgeRequest;
 import kr.ac.koreatech.indoor.vps.application.bridge.BridgeContracts.MergeScanBridgeResponse;
 import kr.ac.koreatech.indoor.vps.application.bridge.PythonBridgeClient;
-import kr.ac.koreatech.indoor.vps.application.persistence.ScanArchiveStorageService.StoredScanArchive;
+import kr.ac.koreatech.indoor.vps.application.floor.FloorApplicationService;
+import kr.ac.koreatech.indoor.vps.infrastructure.storage.ScanArchiveStorageService;
+import kr.ac.koreatech.indoor.vps.infrastructure.storage.ScanArchiveStorageService.StoredScanArchive;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
+import kr.ac.koreatech.indoor.vps.domain.build.BuildState;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.BuildJobEntity;
-import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.BuildState;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.ScanIngestEntity;
@@ -33,8 +35,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
-public class ScanJpaService {
-    private final BuildingJpaService buildingService;
+public class ScanApplicationService {
+    private final FloorApplicationService floorService;
     private final ScanIngestRepository scanIngestRepository;
     private final FloorScanRepository floorScanRepository;
     private final BuildJobRepository buildJobRepository;
@@ -43,8 +45,8 @@ public class ScanJpaService {
     private final IndoorProperties properties;
     private final ObjectMapper objectMapper;
 
-    public ScanJpaService(
-            BuildingJpaService buildingService,
+    public ScanApplicationService(
+            FloorApplicationService floorService,
             ScanIngestRepository scanIngestRepository,
             FloorScanRepository floorScanRepository,
             BuildJobRepository buildJobRepository,
@@ -53,7 +55,7 @@ public class ScanJpaService {
             IndoorProperties properties,
             ObjectMapper objectMapper
     ) {
-        this.buildingService = buildingService;
+        this.floorService = floorService;
         this.scanIngestRepository = scanIngestRepository;
         this.floorScanRepository = floorScanRepository;
         this.buildJobRepository = buildJobRepository;
@@ -71,7 +73,7 @@ public class ScanJpaService {
             String deviceInfo,
             boolean force
     ) {
-        FloorEntity floor = buildingService.requireFloor(floorId);
+        FloorEntity floor = floorService.requireFloor(floorId);
         UUID scanId = scanArchiveStorage.resolveScanId(upload, parseOptional(scanIdText));
         boolean existingScan = scanIngestRepository.existsById(scanId);
         if (existingScan && !force) {
@@ -119,7 +121,7 @@ public class ScanJpaService {
     }
 
     public List<ScanChunkResponse> listScanChunks(UUID floorId) {
-        buildingService.requireFloor(floorId);
+        floorService.requireFloor(floorId);
         return floorScanRepository.findByFloor_FloorIdOrderByUploadOrderAscCreatedAtAsc(floorId).stream()
                 .map(this::toScanChunkResponse)
                 .toList();
@@ -127,7 +129,7 @@ public class ScanJpaService {
 
     @Transactional
     public void deleteScanChunk(UUID floorId, UUID chunkId) {
-        buildingService.requireFloor(floorId);
+        floorService.requireFloor(floorId);
         FloorScanEntity floorScan = floorScanRepository.findByFloor_FloorIdAndFloorScanId(floorId, chunkId)
                 .orElseThrow(() -> notFound("SCAN_CHUNK_NOT_FOUND", "scan chunk not found"));
         UUID scanId = floorScan.getScan().getScanId();
@@ -141,7 +143,7 @@ public class ScanJpaService {
 
     @Transactional
     public MergedScanResponse mergeScans(UUID floorId, List<UUID> chunkIds) {
-        FloorEntity floor = buildingService.requireFloor(floorId);
+        FloorEntity floor = floorService.requireFloor(floorId);
         if (chunkIds == null || chunkIds.isEmpty()) {
             return mergeStatus(floorId);
         }
@@ -198,16 +200,16 @@ public class ScanJpaService {
     }
 
     public MergedScanResponse mergeStatus(UUID floorId) {
-        buildingService.requireFloor(floorId);
-        return buildingService.activeScan(floorId)
+        floorService.requireFloor(floorId);
+        return floorService.activeScan(floorId)
                 .map(scan -> new MergedScanResponse(floorId, scan.getScan().getScanId(), "MERGED"))
                 .orElseGet(() -> new MergedScanResponse(floorId, null, "IDLE"));
     }
 
     @Transactional
     public ProcessingStatusResponse process(UUID floorId) {
-        buildingService.requireFloor(floorId);
-        FloorScanEntity active = buildingService.activeScan(floorId)
+        floorService.requireFloor(floorId);
+        FloorScanEntity active = floorService.activeScan(floorId)
                 .orElseThrow(() -> new ClientApiException(HttpStatus.CONFLICT, "ACTIVE_SCAN_NOT_FOUND", "floor has no active scan"));
         ScanIngestEntity scan = active.getScan();
         BuildJobEntity job = buildJobRepository.saveAndFlush(new BuildJobEntity(scan));
@@ -218,8 +220,8 @@ public class ScanJpaService {
     }
 
     public ProcessingStatusResponse processStatus(UUID floorId) {
-        buildingService.requireFloor(floorId);
-        Optional<FloorScanEntity> active = buildingService.activeScan(floorId);
+        floorService.requireFloor(floorId);
+        Optional<FloorScanEntity> active = floorService.activeScan(floorId);
         if (active.isEmpty()) {
             return new ProcessingStatusResponse(floorId, null, null, "IDLE", null, null);
         }

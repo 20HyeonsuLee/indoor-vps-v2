@@ -5,7 +5,7 @@ import static kr.ac.koreatech.indoor.vps.api.dto.ScanDtos.*;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.application.VpsService;
+import kr.ac.koreatech.indoor.vps.application.scan.ScanApplicationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,9 +22,9 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/v1")
 @Tag(name = "스캔/처리")
 public class ScanController {
-    private final VpsService service;
+    private final ScanApplicationService service;
 
-    public ScanController(VpsService service) {
+    public ScanController(ScanApplicationService service) {
         this.service = service;
     }
 

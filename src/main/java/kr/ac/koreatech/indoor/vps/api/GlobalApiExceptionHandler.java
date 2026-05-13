@@ -3,6 +3,7 @@ package kr.ac.koreatech.indoor.vps.api;
 import kr.ac.koreatech.indoor.vps.api.dto.CommonDtos.ClientApiErrorResponse;
 import java.util.List;
 import java.util.Map;
+import kr.ac.koreatech.indoor.vps.domain.common.DomainException;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.HttpStatus;
@@ -24,6 +25,16 @@ public class GlobalApiExceptionHandler {
                         exception.code(),
                         exception.getMessage(),
                         exception.detail()
+                ));
+    }
+
+    @ExceptionHandler(DomainException.class)
+    ResponseEntity<ClientApiErrorResponse> handleDomain(DomainException exception) {
+        return ResponseEntity.status(HttpStatus.valueOf(exception.status()))
+                .body(new ClientApiErrorResponse(
+                        exception.code(),
+                        exception.getMessage(),
+                        null
                 ));
     }
 

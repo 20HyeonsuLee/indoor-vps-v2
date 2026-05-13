@@ -1,8 +1,6 @@
-package kr.ac.koreatech.indoor.vps.application.persistence;
+package kr.ac.koreatech.indoor.vps.application.floor;
 
-import static kr.ac.koreatech.indoor.vps.api.dto.BuildingDtos.*;
 import static kr.ac.koreatech.indoor.vps.api.dto.FloorDtos.*;
-import static kr.ac.koreatech.indoor.vps.api.dto.PassageDtos.*;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,13 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
-public class BuildingJpaService {
+public class FloorApplicationService {
     private final BuildingRepository buildingRepository;
     private final FloorRepository floorRepository;
     private final FloorScanRepository floorScanRepository;
     private final MapNodeRepository mapNodeRepository;
 
-    public BuildingJpaService(
+    public FloorApplicationService(
             BuildingRepository buildingRepository,
             FloorRepository floorRepository,
             FloorScanRepository floorScanRepository,
@@ -40,72 +38,6 @@ public class BuildingJpaService {
         this.floorRepository = floorRepository;
         this.floorScanRepository = floorScanRepository;
         this.mapNodeRepository = mapNodeRepository;
-    }
-
-    public List<BuildingResponse> listBuildings(String statusFilter) {
-        List<BuildingEntity> buildings = statusFilter == null || statusFilter.isBlank()
-                ? buildingRepository.findAllByOrderByCreatedAtAsc()
-                : buildingRepository.findByStatusOrderByCreatedAtAsc(statusFilter);
-        return buildings.stream().map(this::toBuildingResponse).toList();
-    }
-
-    @Transactional
-    public BuildingResponse createBuilding(BuildingCreateRequest request) {
-        BuildingEntity building = new BuildingEntity(
-                request.name(),
-                request.description(),
-                request.latitude(),
-                request.longitude()
-        );
-        return toBuildingResponse(buildingRepository.saveAndFlush(building));
-    }
-
-    public BuildingDetailResponse getBuilding(UUID buildingId) {
-        BuildingEntity building = requireBuilding(buildingId);
-        return new BuildingDetailResponse(
-                building.getBuildingId(),
-                building.getName(),
-                building.getDescription(),
-                building.getLatitude(),
-                building.getLongitude(),
-                BuildingStatus.valueOf(building.getStatus()),
-                building.getCreatedAt(),
-                building.getUpdatedAt(),
-                listFloors(buildingId),
-                List.of()
-        );
-    }
-
-    @Transactional
-    public BuildingResponse updateBuilding(UUID buildingId, BuildingUpdateRequest request) {
-        BuildingEntity building = requireBuilding(buildingId);
-        if (request.name() != null) {
-            building.setName(request.name());
-        }
-        if (request.description() != null) {
-            building.setDescription(request.description());
-        }
-        if (request.latitude() != null) {
-            building.setLatitude(request.latitude());
-        }
-        if (request.longitude() != null) {
-            building.setLongitude(request.longitude());
-        }
-        return toBuildingResponse(buildingRepository.saveAndFlush(building));
-    }
-
-    @Transactional
-    public void deleteBuilding(UUID buildingId) {
-        BuildingEntity building = requireBuilding(buildingId);
-        buildingRepository.delete(building);
-        buildingRepository.flush();
-    }
-
-    @Transactional
-    public BuildingResponse patchStatus(UUID buildingId, BuildingStatusRequest request) {
-        BuildingEntity building = requireBuilding(buildingId);
-        building.setStatus(request.status().name());
-        return toBuildingResponse(buildingRepository.saveAndFlush(building));
     }
 
     public List<FloorResponse> listFloors(UUID buildingId) {
@@ -161,19 +93,6 @@ public class BuildingJpaService {
 
     public Optional<FloorScanEntity> activeScan(UUID floorId) {
         return floorScanRepository.findFirstByFloor_FloorIdAndActiveTrueOrderByCreatedAtDesc(floorId);
-    }
-
-    private BuildingResponse toBuildingResponse(BuildingEntity building) {
-        return new BuildingResponse(
-                building.getBuildingId(),
-                building.getName(),
-                building.getDescription(),
-                building.getLatitude(),
-                building.getLongitude(),
-                BuildingStatus.valueOf(building.getStatus()),
-                building.getCreatedAt(),
-                building.getUpdatedAt()
-        );
     }
 
     private FloorResponse toFloorResponse(FloorEntity floor) {

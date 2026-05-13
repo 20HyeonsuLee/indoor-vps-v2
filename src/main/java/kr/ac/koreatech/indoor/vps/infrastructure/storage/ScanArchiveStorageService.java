@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.application.persistence;
+package kr.ac.koreatech.indoor.vps.infrastructure.storage;
 
 import java.io.IOException;
 import java.io.InputStream;

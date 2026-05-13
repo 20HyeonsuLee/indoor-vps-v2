@@ -4,7 +4,7 @@ import static kr.ac.koreatech.indoor.vps.api.dto.MapDtos.*;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.application.VpsService;
+import kr.ac.koreatech.indoor.vps.application.navigation.NavigationApplicationService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,9 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 @Tag(name = "지도 데이터")
 public class FloorMapController {
-    private final VpsService service;
+    private final NavigationApplicationService service;
 
-    public FloorMapController(VpsService service) {
+    public FloorMapController(NavigationApplicationService service) {
         this.service = service;
     }
 

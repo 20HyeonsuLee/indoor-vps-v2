@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.application.build;
+package kr.ac.koreatech.indoor.vps.infrastructure.rtabmap;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -9,8 +9,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.EdgeType;
-import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.NodeType;
+import kr.ac.koreatech.indoor.vps.domain.navigation.EdgeType;
+import kr.ac.koreatech.indoor.vps.domain.navigation.NodeType;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.MapEdgeEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.MapNodeEntity;
 import org.locationtech.jts.geom.Coordinate;

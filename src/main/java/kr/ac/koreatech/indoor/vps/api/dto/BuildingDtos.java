@@ -7,14 +7,10 @@ import java.util.List;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.api.dto.FloorDtos.FloorResponse;
 import kr.ac.koreatech.indoor.vps.api.dto.PassageDtos.VerticalPassageResponse;
+import kr.ac.koreatech.indoor.vps.domain.building.BuildingStatus;
 
 public final class BuildingDtos {
     private BuildingDtos() {
-    }
-
-    public enum BuildingStatus {
-        DRAFT,
-        ACTIVE
     }
 
     public record BuildingCreateRequest(

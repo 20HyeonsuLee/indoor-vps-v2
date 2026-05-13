@@ -7,7 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.NodeType;
+import kr.ac.koreatech.indoor.vps.domain.navigation.NodeType;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.Point;

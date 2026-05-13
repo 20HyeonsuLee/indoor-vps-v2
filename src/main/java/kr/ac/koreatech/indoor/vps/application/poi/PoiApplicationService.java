@@ -1,10 +1,11 @@
-package kr.ac.koreatech.indoor.vps.application.persistence;
+package kr.ac.koreatech.indoor.vps.application.poi;
 
 import static kr.ac.koreatech.indoor.vps.api.dto.PoiDtos.*;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.application.building.BuildingApplicationService;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.PoiCanonicalEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.repository.PoiCanonicalRepository;
 import org.locationtech.jts.geom.Coordinate;
@@ -16,12 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
-public class PoiJpaService {
-    private final BuildingJpaService buildingService;
+public class PoiApplicationService {
+    private final BuildingApplicationService buildingService;
     private final PoiCanonicalRepository poiCanonicalRepository;
 
-    public PoiJpaService(
-            BuildingJpaService buildingService,
+    public PoiApplicationService(
+            BuildingApplicationService buildingService,
             PoiCanonicalRepository poiCanonicalRepository
     ) {
         this.buildingService = buildingService;
