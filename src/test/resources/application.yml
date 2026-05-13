@@ -11,4 +11,4 @@ springdoc:
     path: /openapi.json
 
 indoor:
-  persistence: memory
+  persistence: test

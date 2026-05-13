@@ -100,7 +100,7 @@ verification:
   - "fresh Flyway smoke: temp PostgreSQL database, FLYWAY_ENABLED=true, Spring Data JPA startup, upload/process/map API smoke, then DROP DATABASE"
 notes:
   - "Direct JdbcTemplate service attempt was removed after user feedback; persistence now uses Spring Data JPA and Hibernate Spatial/JTS."
-  - "Test runtime sets indoor.persistence=memory; runtime default is indoor.persistence=jpa."
+  - "Test runtime sets indoor.persistence=test with test-only proxy beans; runtime default is indoor.persistence=jpa."
   - "Eval warning fixed by aligning poi_canonical baseline with Python schema display_point/display_area_id/source_mark_ids/cluster_method/created_at columns."
 ```
 
@@ -289,4 +289,22 @@ verification:
 notes:
   - "DTOs are now grouped by API domain: Common, Building, Floor, Passage, Map, Navigation, Scan, POI, and SLAM."
   - "Python bridge now exposes only active commands: health, localize, merge_scan."
+```
+
+## Cycle 11 Result
+
+```yaml
+cycles_run: 11
+verdict: PASS
+agent_trace:
+  - phase: build
+    agent: main-session
+    summary: "Removed the 500-line production InMemoryVpsService and StorageOnlyLocalizationMapProvider test scaffolds; OpenAPI/context tests now use test-only proxy beans."
+verification:
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "git diff --check"
+notes:
+  - "Production runtime no longer has an indoor.persistence=memory service implementation."
+  - "Test runtime uses indoor.persistence=test, excludes datasource/JPA/Flyway, and imports TestApplicationBeans."
 ```
