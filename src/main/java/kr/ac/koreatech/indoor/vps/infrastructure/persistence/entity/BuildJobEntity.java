@@ -63,6 +63,12 @@ public class BuildJobEntity {
     @Column(name = "finished_at")
     private Instant finishedAt;
 
+    @Column(name = "locked_at")
+    private Instant lockedAt;
+
+    @Column(name = "worker_id")
+    private String workerId;
+
     @Column(name = "max_attempts", nullable = false)
     private int maxAttempts = 3;
 
@@ -110,14 +116,18 @@ public class BuildJobEntity {
         return failureDetail;
     }
 
-    public void markRunning() {
+    public void markRunning(String workerId, Instant now) {
         this.state = BuildState.running;
         this.currentStep = BuildStep.init;
         this.progress = 0.05;
-        this.startedAt = Instant.now();
+        this.startedAt = now;
+        this.finishedAt = null;
+        this.lockedAt = now;
+        this.workerId = workerId;
         this.attemptCount++;
         this.failureReason = null;
         this.failureDetail = null;
+        this.counts = null;
     }
 
     public void markPersisting() {
@@ -133,6 +143,7 @@ public class BuildJobEntity {
         this.counts = counts;
         this.failureReason = null;
         this.failureDetail = null;
+        clearLock();
     }
 
     public void markFailed(BuildFailureReason failureReason, String failureDetail) {
@@ -142,5 +153,11 @@ public class BuildJobEntity {
         this.finishedAt = Instant.now();
         this.failureReason = failureReason;
         this.failureDetail = failureDetail == null ? null : failureDetail.substring(0, Math.min(failureDetail.length(), 2000));
+        clearLock();
+    }
+
+    private void clearLock() {
+        this.lockedAt = null;
+        this.workerId = null;
     }
 }

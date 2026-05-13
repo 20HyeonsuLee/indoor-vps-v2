@@ -2,25 +2,24 @@ package kr.ac.koreatech.indoor.vps.application.build;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.application.build.RtabmapGraphReader.RtabmapGraph;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.DbEnums.BuildState;
-import kr.ac.koreatech.indoor.vps.infrastructure.persistence.entity.ScanIngestEntity;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.repository.BuildJobRepository;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.repository.MapEdgeRepository;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.repository.MapNodeRepository;
 import kr.ac.koreatech.indoor.vps.infrastructure.persistence.repository.ScanIngestRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.domain.Limit;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
@@ -31,6 +30,8 @@ public class BuildJobRunner {
     private final MapEdgeRepository mapEdgeRepository;
     private final RtabmapGraphReader graphReader;
     private final IndoorProperties properties;
+    private final TransactionTemplate transactionTemplate;
+    private final String workerId = "spring-build-worker-" + UUID.randomUUID();
 
     public BuildJobRunner(
             BuildJobRepository buildJobRepository,
@@ -38,7 +39,8 @@ public class BuildJobRunner {
             MapNodeRepository mapNodeRepository,
             MapEdgeRepository mapEdgeRepository,
             RtabmapGraphReader graphReader,
-            IndoorProperties properties
+            IndoorProperties properties,
+            TransactionTemplate transactionTemplate
     ) {
         this.buildJobRepository = buildJobRepository;
         this.scanIngestRepository = scanIngestRepository;
@@ -46,69 +48,114 @@ public class BuildJobRunner {
         this.mapEdgeRepository = mapEdgeRepository;
         this.graphReader = graphReader;
         this.properties = properties;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @Scheduled(fixedDelayString = "${indoor.build-worker.poll-interval-ms:2000}")
-    @Transactional
     public void runPendingJobs() {
         if (!properties.getBuildWorker().isEnabled()) {
             return;
         }
-        List<BuildJobEntity> jobs = buildJobRepository.findByStateOrderByEnqueuedAtAsc(
-                BuildState.pending,
-                Limit.of(Math.max(1, properties.getBuildWorker().getBatchSize()))
-        );
-        for (BuildJobEntity job : jobs) {
-            runJob(job.getBuildJobId());
+        int batchSize = Math.max(1, properties.getBuildWorker().getBatchSize());
+        for (int i = 0; i < batchSize; i++) {
+            UUID buildJobId = transactionTemplate.execute(status -> claimNextJob().orElse(null));
+            if (buildJobId == null) {
+                return;
+            }
+            processClaimedJob(buildJobId);
         }
     }
 
-    @Transactional
-    public void runJob(UUID buildJobId) {
-        BuildJobEntity job = buildJobRepository.findById(buildJobId)
-                .orElseThrow();
-        if (job.getState() != BuildState.pending) {
-            return;
-        }
-        ScanIngestEntity scan = job.getScan();
-        UUID scanId = scan.getScanId();
-        Path dbPath = rtabmapDbPath(scan.getStoragePath());
-        try {
-            job.markRunning();
-            scan.setBuildState(BuildState.running);
-            buildJobRepository.saveAndFlush(job);
-            scanIngestRepository.saveAndFlush(scan);
+    private Optional<UUID> claimNextJob() {
+        Optional<BuildJobEntity> pending = buildJobRepository.lockNextPendingJob();
+        pending.ifPresent(this::markClaimed);
+        return pending.map(BuildJobEntity::getBuildJobId);
+    }
 
-            if (!Files.exists(dbPath)) {
-                throw new BuildInputException("rtabmap.db not found at " + dbPath);
+    private void markClaimed(BuildJobEntity job) {
+        job.markRunning(workerId, Instant.now());
+        job.getScan().setBuildState(BuildState.running);
+        buildJobRepository.saveAndFlush(job);
+        scanIngestRepository.saveAndFlush(job.getScan());
+    }
+
+    private void processClaimedJob(UUID buildJobId) {
+        try {
+            JobInput input = transactionTemplate.execute(status -> jobInput(buildJobId));
+            if (input == null) {
+                return;
             }
-            RtabmapGraph graph = graphReader.read(dbPath, scanId, job.getBuildJobId());
+            if (!Files.exists(input.dbPath())) {
+                throw new BuildInputException("rtabmap.db not found at " + input.dbPath());
+            }
+            RtabmapGraph graph = graphReader.read(input.dbPath(), input.scanId(), buildJobId);
             if (graph.nodes().isEmpty()) {
                 throw new BuildInputException("rtabmap graph has no nodes");
             }
-
-            job.markPersisting();
-            mapEdgeRepository.deleteByScanId(scanId);
-            mapNodeRepository.deleteByScanId(scanId);
-            mapNodeRepository.saveAll(graph.nodes());
-            mapEdgeRepository.saveAll(graph.edges());
-
-            Map<String, Object> counts = new LinkedHashMap<>();
-            counts.put("build_source", "rtabmap_node_link_sqlite");
-            counts.put("map_nodes", graph.nodes().size());
-            counts.put("map_edges", graph.edges().size());
-            counts.put("rtabmap", Map.of("db_path", dbPath.toString()));
-            job.markSucceeded(counts);
-            scan.setBuildState(BuildState.succeeded);
+            transactionTemplate.executeWithoutResult(status -> persistSuccess(buildJobId, input, graph));
         } catch (BuildInputException | RtabmapGraphReader.RtabmapGraphReadException e) {
-            job.markFailed(BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
-            scan.setBuildState(BuildState.failed);
+            markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
         } catch (RuntimeException e) {
-            job.markFailed(BuildFailureReason.internal, e.getMessage());
-            scan.setBuildState(BuildState.failed);
+            markFailure(buildJobId, BuildFailureReason.internal, e.getMessage());
         }
+    }
+
+    private JobInput jobInput(UUID buildJobId) {
+        BuildJobEntity job = buildJobRepository.findById(buildJobId).orElseThrow();
+        if (job.getState() != BuildState.running) {
+            return null;
+        }
+        return new JobInput(
+                job.getScan().getScanId(),
+                rtabmapDbPath(job.getScan().getStoragePath())
+        );
+    }
+
+    private void persistSuccess(UUID buildJobId, JobInput input, RtabmapGraph graph) {
+        BuildJobEntity job = buildJobRepository.findById(buildJobId).orElseThrow();
+        if (job.getState() != BuildState.running) {
+            return;
+        }
+        job.markPersisting();
+        mapEdgeRepository.deleteByScanId(input.scanId());
+        mapNodeRepository.deleteByScanId(input.scanId());
+        mapNodeRepository.saveAll(graph.nodes());
+        mapEdgeRepository.saveAll(graph.edges());
+
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("build_source", "rtabmap_node_link_sqlite");
+        counts.put("map_nodes", graph.nodes().size());
+        counts.put("map_edges", graph.edges().size());
+        counts.put("rtabmap", Map.of("db_path", input.dbPath().toString()));
+        job.markSucceeded(counts);
+        job.getScan().setBuildState(BuildState.succeeded);
         buildJobRepository.saveAndFlush(job);
-        scanIngestRepository.saveAndFlush(scan);
+        scanIngestRepository.saveAndFlush(job.getScan());
+    }
+
+    private void markFailure(UUID buildJobId, BuildFailureReason reason, String detail) {
+        transactionTemplate.executeWithoutResult(status -> {
+            BuildJobEntity job = buildJobRepository.findById(buildJobId).orElseThrow();
+            if (job.getState() == BuildState.succeeded) {
+                return;
+            }
+            job.markFailed(reason, detail);
+            job.getScan().setBuildState(BuildState.failed);
+            buildJobRepository.saveAndFlush(job);
+            scanIngestRepository.saveAndFlush(job.getScan());
+        });
+    }
+
+    public void runJob(UUID buildJobId) {
+        UUID claimed = transactionTemplate.execute(status -> buildJobRepository.lockPendingJobById(buildJobId)
+                .map(job -> {
+                    markClaimed(job);
+                    return job.getBuildJobId();
+                })
+                .orElse(null));
+        if (claimed != null) {
+            processClaimedJob(claimed);
+        }
     }
 
     private Path rtabmapDbPath(String storagePath) {
@@ -130,5 +177,8 @@ public class BuildJobRunner {
         BuildInputException(String message) {
             super(message);
         }
+    }
+
+    private record JobInput(UUID scanId, Path dbPath) {
     }
 }

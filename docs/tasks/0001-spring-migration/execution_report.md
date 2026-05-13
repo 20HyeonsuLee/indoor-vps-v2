@@ -247,3 +247,27 @@ notes:
   - ".gitignore was tightened from build/ to /build/ so source package src/.../application/build is tracked."
   - "A shared-DB smoke was discarded because the existing Docker worker consumed the pending build job first; the accepted evidence uses an isolated temporary database."
 ```
+
+## Cycle 9 Result
+
+```yaml
+cycles_run: 9
+verdict: PASS
+agent_trace:
+  - phase: eval
+    agent: eval-implementation
+    summary: "PASS_WITH_WARN. Java/JPA direction passed, but pending job claim was not atomic and graph replacement transaction safety needed hardening."
+  - phase: build
+    agent: main-session
+    summary: "Changed build worker claim to short Spring transaction + PostgreSQL FOR UPDATE SKIP LOCKED through Spring Data JPA native query; split graph read, success commit, and failure commit into separate transaction boundaries."
+verification:
+  - "./mvnw -q -Dtest=RtabmapGraphReaderTest test"
+  - "./mvnw test -q"
+  - "./mvnw -q -DskipTests package"
+  - "git diff --check"
+  - "SERVER_PORT=18094 DATABASE_URL=jdbc:postgresql://127.0.0.1:55432/indoor_v2_smoke_1778687549 FLYWAY_ENABLED=true PYTHON_BRIDGE_ENABLED=false BUILD_WORKER_POLL_INTERVAL_MS=500 ./mvnw spring-boot:run -q"
+  - "live smoke on fresh Flyway DB: upload scan ZIP, enqueue /process, claim job through SKIP LOCKED path, poll SUCCEEDED, verify /path returns nodes=2 edges=1"
+notes:
+  - "build_job.locked_at and worker_id are now mapped and populated while running, then cleared on success/failure."
+  - "Graph replacement is committed only in the success transaction. If map_nodes/map_edges replacement fails, that transaction rolls back before a separate failure-status transaction runs."
+```
