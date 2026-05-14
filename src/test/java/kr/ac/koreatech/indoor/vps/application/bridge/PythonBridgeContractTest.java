@@ -27,6 +27,7 @@ class PythonBridgeContractTest {
         assertThat(stdout.path("ok").asBoolean()).isTrue();
         assertThat(stdout.path("commands").valueStream().map(JsonNode::asText).toList())
                 .containsExactly("health", "localize", "merge_scan");
+        assertThat(stdout.path("mlDevice").asText()).isEqualTo("cpu");
     }
 
     @Test
@@ -79,6 +80,7 @@ class PythonBridgeContractTest {
         properties.getPython().setEnabled(true);
         properties.getPython().setExecutable("python3");
         properties.getPython().setBridgeScript(Path.of("scripts/python_bridge/bridge_entry.py"));
+        properties.getPython().setBackendSource("/tmp/indoor-vps-v2-missing-python-src");
         PythonBridgeClient client = new PythonBridgeClient(properties, objectMapper);
 
         assertThatThrownBy(() -> client.localize(new LocalizeBridgeRequest(
@@ -91,7 +93,24 @@ class PythonBridgeContractTest {
                     assertThat(error.code()).isEqualTo("BRIDGE_BACKEND_NOT_CONFIGURED");
                     assertThat(error.detail()).containsEntry("command", "localize");
                     assertThat(error.detail()).containsEntry("exitCode", 2);
+                    assertThat(error.detail().get("path").toString())
+                            .endsWith("/tmp/indoor-vps-v2-missing-python-src");
                 });
+    }
+
+    @Test
+    void javaBridgeClientForcesConfiguredMlDevice() {
+        IndoorProperties properties = new IndoorProperties();
+        properties.getPython().setEnabled(true);
+        properties.getPython().setExecutable("python3");
+        properties.getPython().setBridgeScript(Path.of("scripts/python_bridge/bridge_entry.py"));
+        properties.getPython().setDevice("cpu");
+        PythonBridgeClient client = new PythonBridgeClient(properties, objectMapper);
+
+        BridgeContracts.HealthBridgeResponse health = client.health();
+
+        assertThat(health.mlDevice()).isEqualTo("cpu");
+        assertThat(health.cudaVisibleDevices()).isEmpty();
     }
 
     private BridgeResult call(String command, Map<String, Object> payload) throws Exception {

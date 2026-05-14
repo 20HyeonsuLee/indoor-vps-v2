@@ -33,13 +33,44 @@ dependencies {
 
     runtimeOnly("org.postgresql:postgresql")
 
+    testImplementation(platform("io.cucumber:cucumber-bom:7.34.3"))
+    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.2"))
     testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
     testImplementation("org.springframework.boot:spring-boot-starter-flyway-test")
     testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testImplementation("io.cucumber:cucumber-java")
+    testImplementation("io.cucumber:cucumber-spring")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
+    testRuntimeOnly("io.cucumber:cucumber-junit-platform-engine")
 }
 
-tasks.withType<Test> {
-    useJUnitPlatform()
+tasks.test {
+    useJUnitPlatform {
+        excludeEngines("cucumber")
+        excludeTags("e2e")
+    }
+}
+
+tasks.register<Test>("e2eTest") {
+    description = "Runs isolated end-to-end tests against Testcontainers dependencies."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    systemProperty(
+        "indoor.e2e.db.image",
+        providers.gradleProperty("indoor.e2e.db.image")
+            .orElse("garapadev/postgres-postgis-pgvector:15-stable")
+            .get()
+    )
+    systemProperty("cucumber.features", "classpath:features")
+    systemProperty("cucumber.glue", "kr.ac.koreatech.indoor.vps.acceptance")
+    systemProperty("cucumber.filter.tags", "@acceptance")
+    systemProperty("cucumber.plugin", "pretty,summary")
+    shouldRunAfter(tasks.named("test"))
+    useJUnitPlatform {
+        includeEngines("cucumber")
+    }
 }

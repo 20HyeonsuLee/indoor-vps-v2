@@ -50,7 +50,12 @@ def main() -> int:
 
 def dispatch(command: str, payload: dict[str, object]) -> int:
     if command == "health":
-        print(json.dumps({"ok": True, "commands": list(COMMANDS)}))
+        print(json.dumps({
+            "ok": True,
+            "commands": list(COMMANDS),
+            "mlDevice": requested_ml_device(),
+            "cudaVisibleDevices": os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>"),
+        }))
         return 0
     if command == "localize":
         validate_localize(payload)
@@ -171,20 +176,8 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
 
 
 def load_legacy_localize_dependencies():
-    backend_src = os.environ.get("INDOOR_LEGACY_BACKEND_SRC") or os.environ.get("PYTHON_BACKEND_SRC", "")
-    if not backend_src:
-        raise BridgeRuntimeError(
-            "BRIDGE_BACKEND_NOT_CONFIGURED",
-            "INDOOR_LEGACY_BACKEND_SRC is required for localize",
-        )
-    backend_path = Path(backend_src).expanduser().resolve()
-    if not backend_path.exists():
-        raise BridgeRuntimeError(
-            "BRIDGE_BACKEND_NOT_CONFIGURED",
-            "legacy Python backend source path does not exist",
-            {"path": str(backend_path)},
-        )
-    sys.path.insert(0, str(backend_path))
+    backend_path = resolve_legacy_backend_src("localize")
+    prepend_sys_path(backend_path)
     try:
         from indoor_server.application.slam.localize_service import (  # type: ignore
             _get_sp_engine,
@@ -262,20 +255,8 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
 
 
 def load_legacy_merge_dependencies():
-    backend_src = os.environ.get("INDOOR_LEGACY_BACKEND_SRC") or os.environ.get("PYTHON_BACKEND_SRC", "")
-    if not backend_src:
-        raise BridgeRuntimeError(
-            "BRIDGE_BACKEND_NOT_CONFIGURED",
-            "INDOOR_LEGACY_BACKEND_SRC is required for merge_scan",
-        )
-    backend_path = Path(backend_src).expanduser().resolve()
-    if not backend_path.exists():
-        raise BridgeRuntimeError(
-            "BRIDGE_BACKEND_NOT_CONFIGURED",
-            "legacy Python backend source path does not exist",
-            {"path": str(backend_path)},
-        )
-    sys.path.insert(0, str(backend_path))
+    backend_path = resolve_legacy_backend_src("merge_scan")
+    prepend_sys_path(backend_path)
     try:
         from indoor_server.application.building.multiscan_rtabmap_merge import (  # type: ignore
             MultiScanReprocessParams,
@@ -295,6 +276,37 @@ def load_legacy_merge_dependencies():
         SourceRtabmapScan,
         MultiScanRtabmapMergeError,
     )
+
+
+def resolve_legacy_backend_src(command: str) -> Path:
+    backend_src = os.environ.get("INDOOR_LEGACY_BACKEND_SRC") or os.environ.get("PYTHON_BACKEND_SRC", "")
+    backend_path = Path(backend_src).expanduser().resolve() if backend_src else default_legacy_backend_src()
+    if not backend_path.exists():
+        raise BridgeRuntimeError(
+            "BRIDGE_BACKEND_NOT_CONFIGURED",
+            "legacy Python backend source path does not exist",
+            {
+                "command": command,
+                "path": str(backend_path),
+                "defaultPath": str(default_legacy_backend_src()),
+                "env": "INDOOR_LEGACY_BACKEND_SRC or PYTHON_BACKEND_SRC",
+            },
+        )
+    return backend_path
+
+
+def default_legacy_backend_src() -> Path:
+    return Path(__file__).resolve().parents[2] / "python" / "legacy_backend" / "src"
+
+
+def prepend_sys_path(path: Path) -> None:
+    path_text = str(path)
+    if path_text not in sys.path:
+        sys.path.insert(0, path_text)
+
+
+def requested_ml_device() -> str:
+    return os.environ.get("INDOOR_ML_DEVICE", "cpu").strip().lower() or "cpu"
 
 
 def read_image_bytes(image_paths: list[str]) -> list[bytes]:

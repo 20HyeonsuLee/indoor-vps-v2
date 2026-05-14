@@ -137,7 +137,7 @@ class NavigationGraphServiceTest {
                 from.id(),
                 to.id(),
                 lengthM,
-                EdgeType.skeleton
+                EdgeType.rtabmap_link
         );
     }
 

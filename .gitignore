@@ -17,5 +17,6 @@ backups/*.zip
 var/
 logs/
 tmp/
+test-fixtures/captured/
 
 src/main/resources/application-local.yml

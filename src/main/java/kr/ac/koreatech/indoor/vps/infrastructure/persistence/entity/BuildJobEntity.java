@@ -118,7 +118,7 @@ public class BuildJobEntity {
 
     public void markRunning(String workerId, Instant now) {
         this.state = BuildState.running;
-        this.currentStep = BuildStep.init;
+        this.currentStep = BuildStep.rtabmap_graph;
         this.progress = 0.05;
         this.startedAt = now;
         this.finishedAt = null;

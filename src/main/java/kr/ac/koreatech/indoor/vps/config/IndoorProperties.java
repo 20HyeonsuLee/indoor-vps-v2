@@ -8,6 +8,7 @@ public class IndoorProperties {
     private Path storageRoot = Path.of("./var/storage");
     private Python python = new Python();
     private BuildWorker buildWorker = new BuildWorker();
+    private FixtureCapture fixtureCapture = new FixtureCapture();
 
     public Path getStorageRoot() {
         return storageRoot;
@@ -33,11 +34,20 @@ public class IndoorProperties {
         this.buildWorker = buildWorker;
     }
 
+    public FixtureCapture getFixtureCapture() {
+        return fixtureCapture;
+    }
+
+    public void setFixtureCapture(FixtureCapture fixtureCapture) {
+        this.fixtureCapture = fixtureCapture;
+    }
+
     public static class Python {
         private boolean enabled;
         private String executable = "python3";
         private Path bridgeScript = Path.of("./scripts/python_bridge/bridge_entry.py");
-        private String backendSource = "";
+        private String backendSource = "./python/legacy_backend/src";
+        private String device = "cpu";
         private long timeoutSeconds = 60;
 
         public boolean isEnabled() {
@@ -70,6 +80,14 @@ public class IndoorProperties {
 
         public void setBackendSource(String backendSource) {
             this.backendSource = backendSource;
+        }
+
+        public String getDevice() {
+            return device;
+        }
+
+        public void setDevice(String device) {
+            this.device = device;
         }
 
         public long getTimeoutSeconds() {
@@ -108,6 +126,27 @@ public class IndoorProperties {
 
         public void setBatchSize(int batchSize) {
             this.batchSize = batchSize;
+        }
+    }
+
+    public static class FixtureCapture {
+        private boolean enabled;
+        private Path root = Path.of("./test-fixtures/captured");
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Path getRoot() {
+            return root;
+        }
+
+        public void setRoot(Path root) {
+            this.root = root;
         }
     }
 }

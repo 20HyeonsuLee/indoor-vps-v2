@@ -1,6 +1,6 @@
 package kr.ac.koreatech.indoor.vps.domain.navigation;
 
 public enum EdgeType {
-    skeleton,
+    rtabmap_link,
     poi_spur
 }

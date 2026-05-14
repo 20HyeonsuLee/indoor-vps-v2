@@ -105,6 +105,14 @@ public class PythonBridgeClient {
         if (backendSource != null && !backendSource.isBlank()) {
             environment.put("INDOOR_LEGACY_BACKEND_SRC", backendSource);
         }
+        String device = properties.getPython().getDevice();
+        if (device != null && !device.isBlank()) {
+            String normalizedDevice = device.trim();
+            environment.put("INDOOR_ML_DEVICE", normalizedDevice);
+            if ("cpu".equalsIgnoreCase(normalizedDevice)) {
+                environment.put("CUDA_VISIBLE_DEVICES", "");
+            }
+        }
     }
 
     private ClientApiException bridgeError(String command, String code, String message, Integer exitCode) {

@@ -8,7 +8,7 @@ public final class BridgeContracts {
     private BridgeContracts() {
     }
 
-    public record HealthBridgeResponse(boolean ok, List<String> commands) {
+    public record HealthBridgeResponse(boolean ok, List<String> commands, String mlDevice, String cudaVisibleDevices) {
     }
 
     public record LocalizeBridgeRequest(

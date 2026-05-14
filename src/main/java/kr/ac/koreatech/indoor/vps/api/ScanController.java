@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.application.scan.ScanApplicationService;
+import kr.ac.koreatech.indoor.vps.infrastructure.capture.FixtureCaptureService;
+import kr.ac.koreatech.indoor.vps.infrastructure.capture.FixtureCaptureService.CaptureRecord;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,9 +25,11 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "스캔/처리")
 public class ScanController {
     private final ScanApplicationService service;
+    private final FixtureCaptureService fixtureCapture;
 
-    public ScanController(ScanApplicationService service) {
+    public ScanController(ScanApplicationService service, FixtureCaptureService fixtureCapture) {
         this.service = service;
+        this.fixtureCapture = fixtureCapture;
     }
 
     @PostMapping("/floors/{floorId}/scans/chunks")
@@ -42,7 +46,15 @@ public class ScanController {
         if (upload == null || upload.isEmpty()) {
             throw new ClientApiException(HttpStatus.BAD_REQUEST, "FILE_REQUIRED", "file or payload is required");
         }
-        return service.uploadScanChunk(floorId, upload, scanId, deviceInfo, force);
+        CaptureRecord capture = fixtureCapture.captureScanChunk(floorId, upload, scanId, deviceInfo, force);
+        try {
+            ScanChunkResponse response = service.uploadScanChunk(floorId, upload, scanId, deviceInfo, force);
+            fixtureCapture.writeResponse(capture, response);
+            return response;
+        } catch (RuntimeException e) {
+            fixtureCapture.writeError(capture, e);
+            throw e;
+        }
     }
 
     @GetMapping("/floors/{floorId}/scans/chunks")

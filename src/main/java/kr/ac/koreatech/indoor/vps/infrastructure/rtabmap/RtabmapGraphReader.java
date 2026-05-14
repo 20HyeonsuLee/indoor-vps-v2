@@ -63,7 +63,7 @@ public class RtabmapGraphReader {
                                 buildJobId,
                                 nodeId(scanId, from.rtabmapId()),
                                 nodeId(scanId, to.rtabmapId()),
-                                EdgeType.skeleton,
+                                EdgeType.rtabmap_link,
                                 geometryFactory.createLineString(new Coordinate[] {fromCoordinate, toCoordinate}),
                                 distance(fromCoordinate, toCoordinate)
                         ));

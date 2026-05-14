@@ -12,23 +12,17 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE edge_type AS ENUM ('skeleton', 'poi_spur');
+    CREATE TYPE edge_type AS ENUM ('rtabmap_link', 'poi_spur');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE build_step AS ENUM (
-        'init', 'floor_seg', 'back_project', 'walkable_grid', 'skeleton',
-        'node_placement', 'poi_projection', 'quality_gate', 'persist', 'done'
-    );
+    CREATE TYPE build_step AS ENUM ('rtabmap_graph', 'persist', 'done');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE build_failure_reason AS ENUM (
-        'walkable_coverage_low', 'graph_disconnected', 'model_load_failed',
-        'intrinsics_missing', 'rtabmap_data_not_ready', 'internal'
-    );
+    CREATE TYPE build_failure_reason AS ENUM ('rtabmap_data_not_ready', 'internal');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

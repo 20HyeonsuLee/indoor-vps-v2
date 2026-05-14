@@ -1,0 +1,64 @@
+[project]
+name = "indoor-vps-python-bridge-runtime"
+version = "0.1.0"
+description = "Python-only bridge runtime for indoor-vps-v2"
+readme = "README.md"
+authors = [
+    { name = "leehyeonsu", email = "leehyeonsu4888@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pillow>=10.0.0",
+    "numpy>=1.26.0",
+    "opencv-contrib-python>=4.9.0",
+    "scipy>=1.13.0",
+    "lightglue",
+    "torch>=2.3.0",
+    "torchvision>=0.18.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "N"]
+ignore = ["B008", "N818"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/indoor_server/application/slam/superpoint/engine.py" = ["N803", "N806"]
+"src/indoor_server/application/slam/superpoint/global_descriptor.py" = ["N812"]
+"src/indoor_server/application/slam/superpoint/map_manager.py" = ["N802", "N803", "N806"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+exclude = [
+    "^\\.venv/",
+    "^\\.pytest_cache/",
+    "^var/",
+]
+
+[tool.uv.sources]
+lightglue = { git = "https://github.com/cvg/LightGlue.git" }
+# torch/torchvision 은 NVIDIA driver CUDA 12.6 환경 (RTX 30/40, driver < 580) 에 맞춰
+# PyTorch 공식 CUDA 12.6 wheel index 에서 가져온다. 기본 PyPI 의 cu130 wheel 은
+# driver 580+ 가 필요해 cuda available=False 로 떨어진다.
+torch = { index = "pytorch-cu126" }
+torchvision = { index = "pytorch-cu126" }
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true

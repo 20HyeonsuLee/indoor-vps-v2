@@ -27,9 +27,13 @@ indoor:
     enabled: ${PYTHON_BRIDGE_ENABLED:false}
     executable: ${PYTHON_EXECUTABLE:python3}
     bridge-script: ${PYTHON_BRIDGE_SCRIPT:./scripts/python_bridge/bridge_entry.py}
-    backend-source: ${PYTHON_BACKEND_SRC:}
+    backend-source: ${PYTHON_BACKEND_SRC:./python/legacy_backend/src}
+    device: ${PYTHON_ML_DEVICE:cpu}
     timeout-seconds: ${PYTHON_BRIDGE_TIMEOUT_SECONDS:60}
   build-worker:
     enabled: ${BUILD_WORKER_ENABLED:true}
     poll-interval-ms: ${BUILD_WORKER_POLL_INTERVAL_MS:2000}
     batch-size: ${BUILD_WORKER_BATCH_SIZE:1}
+  fixture-capture:
+    enabled: ${FIXTURE_CAPTURE_ENABLED:false}
+    root: ${FIXTURE_CAPTURE_ROOT:./test-fixtures/captured}

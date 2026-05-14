@@ -1,0 +1,3 @@
+indoor:
+  python:
+    device: ${PYTHON_ML_DEVICE:cuda}

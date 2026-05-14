@@ -5,6 +5,8 @@ import static kr.ac.koreatech.indoor.vps.api.dto.SlamDtos.*;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import kr.ac.koreatech.indoor.vps.application.SlamLocalizationService;
+import kr.ac.koreatech.indoor.vps.infrastructure.capture.FixtureCaptureService;
+import kr.ac.koreatech.indoor.vps.infrastructure.capture.FixtureCaptureService.CaptureRecord;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -16,9 +18,11 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "SLAM 위치추정")
 public class SlamController {
     private final SlamLocalizationService localizationService;
+    private final FixtureCaptureService fixtureCapture;
 
-    public SlamController(SlamLocalizationService localizationService) {
+    public SlamController(SlamLocalizationService localizationService, FixtureCaptureService fixtureCapture) {
         this.localizationService = localizationService;
+        this.fixtureCapture = fixtureCapture;
     }
 
     @PostMapping("/v3/localize")
@@ -27,6 +31,14 @@ public class SlamController {
             @RequestParam(name = "building_id", required = false) String buildingId,
             @RequestParam(name = "map_id", required = false) String mapId
     ) {
-        return localizationService.localize(images, buildingId, mapId);
+        CaptureRecord capture = fixtureCapture.captureLocalizeImages(images, buildingId, mapId);
+        try {
+            SLAMLocalizeResponse response = localizationService.localize(images, buildingId, mapId);
+            fixtureCapture.writeResponse(capture, response);
+            return response;
+        } catch (RuntimeException e) {
+            fixtureCapture.writeError(capture, e);
+            throw e;
+        }
     }
 }
