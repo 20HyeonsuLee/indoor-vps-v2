@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.logging;
+package kr.ac.koreatech.indoor.vps.config;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
