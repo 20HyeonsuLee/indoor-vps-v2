@@ -22,38 +22,6 @@ public final class ScanDtos {
     ) {
     }
 
-    public record FramePayload(
-            int nodeId,
-            double stamp,
-            String pose,
-            String image,
-            String calibration,
-            Integer mapId,
-            Integer weight,
-            String depth,
-            String scan,
-            String scanInfo,
-            String label,
-            String userData
-    ) {
-    }
-
-    public record FrameLinkPayload(
-            int fromId,
-            int toId,
-            String transform,
-            Integer type,
-            String informationMatrix,
-            String userData
-    ) {
-    }
-
-    public record ScanFramesRequest(
-            List<FramePayload> frames,
-            List<FrameLinkPayload> links
-    ) {
-    }
-
     public record ScanFramesResponse(
             UUID scanId,
             int framesApplied,

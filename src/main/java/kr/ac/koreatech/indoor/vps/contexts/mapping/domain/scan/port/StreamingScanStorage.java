@@ -1,8 +1,8 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.ScanDtos.ScanFramesRequest;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface StreamingScanStorage {
@@ -12,6 +12,38 @@ public interface StreamingScanStorage {
     StreamingFrameStats append(UUID scanId, ScanFramesRequest request);
 
     FinalizedStreamingScan finalizeScan(UUID scanId, MultipartFile manifest, MultipartFile metadata);
+
+    record ScanFramesRequest(
+            List<FramePayload> frames,
+            List<FrameLinkPayload> links
+    ) {
+    }
+
+    record FramePayload(
+            int nodeId,
+            double stamp,
+            String pose,
+            String image,
+            String calibration,
+            Integer mapId,
+            Integer weight,
+            String depth,
+            String scan,
+            String scanInfo,
+            String label,
+            String userData
+    ) {
+    }
+
+    record FrameLinkPayload(
+            int fromId,
+            int toId,
+            String transform,
+            Integer type,
+            String informationMatrix,
+            String userData
+    ) {
+    }
 
     record StartedStreamingScan(UUID scanId, UUID floorId, String storagePath, String state) {
     }

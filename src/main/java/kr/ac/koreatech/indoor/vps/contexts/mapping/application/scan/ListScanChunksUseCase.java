@@ -3,7 +3,7 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 import java.util.List;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
@@ -19,13 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class ListScanChunksUseCase {
 
-    private final FloorApplicationService floorService;
+    private final FloorUseCase floorService;
     private final FloorScanRepository floorScanRepository;
     private final ScanIngestRepository scanIngestRepository;
     private final ScanArchiveStorage scanArchiveStorage;
 
     public ListScanChunksUseCase(
-            FloorApplicationService floorService,
+            FloorUseCase floorService,
             FloorScanRepository floorScanRepository,
             ScanIngestRepository scanIngestRepository,
             ScanArchiveStorage scanArchiveStorage

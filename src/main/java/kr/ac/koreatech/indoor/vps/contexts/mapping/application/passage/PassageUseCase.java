@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUseCase;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -18,17 +18,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
-public class PassageApplicationService {
-    private final BuildingApplicationService buildingService;
+public class PassageUseCase {
+    private final BuildingUseCase buildingUseCase;
     private final JdbcClient jdbcClient;
 
-    public PassageApplicationService(BuildingApplicationService buildingService, JdbcClient jdbcClient) {
-        this.buildingService = buildingService;
+    public PassageUseCase(BuildingUseCase buildingUseCase, JdbcClient jdbcClient) {
+        this.buildingUseCase = buildingUseCase;
         this.jdbcClient = jdbcClient;
     }
 
     public List<VerticalPassageResponse> listPassages(UUID buildingId) {
-        buildingService.requireBuilding(buildingId);
+        buildingUseCase.requireBuilding(buildingId);
         Map<UUID, PassageAccumulator> passages = new LinkedHashMap<>();
         for (PassageRow row : fetchRows(buildingId)) {
             PassageAccumulator passage = passages.computeIfAbsent(

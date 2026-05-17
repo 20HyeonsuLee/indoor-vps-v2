@@ -12,6 +12,7 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ProcessFloor
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.PushStreamingFramesUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.StartStreamingScanUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.UploadScanChunkUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.ScanFramesRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StartedStreamingScan;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StreamingFrameStats;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture.FixtureCaptureService;

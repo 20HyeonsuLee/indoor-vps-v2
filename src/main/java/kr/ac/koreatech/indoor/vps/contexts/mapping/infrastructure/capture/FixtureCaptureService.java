@@ -1,18 +1,12 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,11 +27,11 @@ public class FixtureCaptureService {
             .withZone(ZoneOffset.UTC);
 
     private final IndoorProperties properties;
-    private final ObjectMapper objectMapper;
+    private final CaptureFileIo fileIo;
 
-    public FixtureCaptureService(IndoorProperties properties, ObjectMapper objectMapper) {
+    public FixtureCaptureService(IndoorProperties properties, CaptureFileIo fileIo) {
         this.properties = properties;
-        this.objectMapper = objectMapper;
+        this.fileIo = fileIo;
     }
 
     public CaptureRecord captureScanChunk(
@@ -52,8 +46,8 @@ public class FixtureCaptureService {
         }
         try {
             Path directory = newCaptureDirectory("scan-chunks", scanId);
-            CapturedFile file = copyMultipart(upload, directory.resolve("upload"));
-            writeJson(directory.resolve("request.json"), mapOf(
+            CapturedFile file = fileIo.copyMultipart(upload, directory.resolve("upload"));
+            fileIo.writeJson(directory.resolve("request.json"), mapOf(
                     "type", "scan-chunk-upload",
                     "capturedAt", Instant.now().toString(),
                     "floorId", floorId,
@@ -86,10 +80,10 @@ public class FixtureCaptureService {
                     if (image == null) {
                         continue;
                     }
-                    files.add(copyMultipart(image, imageDirectory.resolve("%02d".formatted(i))));
+                    files.add(fileIo.copyMultipart(image, imageDirectory.resolve("%02d".formatted(i))));
                 }
             }
-            writeJson(directory.resolve("request.json"), mapOf(
+            fileIo.writeJson(directory.resolve("request.json"), mapOf(
                     "type", "slam-localize",
                     "capturedAt", Instant.now().toString(),
                     "buildingId", buildingId,
@@ -107,7 +101,7 @@ public class FixtureCaptureService {
             return;
         }
         try {
-            writeJson(capture.directory().resolve("response.json"), response);
+            fileIo.writeJson(capture.directory().resolve("response.json"), response);
         } catch (IOException e) {
             log.warn("Fixture response capture failed at {}", capture.directory(), e);
         }
@@ -118,7 +112,7 @@ public class FixtureCaptureService {
             return;
         }
         try {
-            writeJson(capture.directory().resolve("error.json"), errorBody(error));
+            fileIo.writeJson(capture.directory().resolve("error.json"), errorBody(error));
         } catch (IOException e) {
             log.warn("Fixture error capture failed at {}", capture.directory(), e);
         }
@@ -131,7 +125,7 @@ public class FixtureCaptureService {
     private Path newCaptureDirectory(String type, String hint) throws IOException {
         String captureId = CAPTURE_ID_TIME.format(Instant.now())
                 + "-"
-                + sanitize(hint == null || hint.isBlank() ? "capture" : hint)
+                + fileIo.sanitize(hint == null || hint.isBlank() ? "capture" : hint)
                 + "-"
                 + UUID.randomUUID().toString().substring(0, 8);
         Path directory = properties.getFixtureCapture().getRoot()
@@ -141,43 +135,6 @@ public class FixtureCaptureService {
                 .resolve(captureId);
         Files.createDirectories(directory);
         return directory;
-    }
-
-    private CapturedFile copyMultipart(MultipartFile file, Path targetPrefix) throws IOException {
-        Files.createDirectories(targetPrefix.getParent());
-        String filename = safeFileName(file.getOriginalFilename());
-        Path target = targetPrefix.resolveSibling(targetPrefix.getFileName() + "-" + filename);
-        MessageDigest digest = sha256();
-        long size = 0;
-        try (InputStream in = file.getInputStream(); OutputStream out = Files.newOutputStream(target)) {
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                digest.update(buffer, 0, read);
-                out.write(buffer, 0, read);
-                size += read;
-            }
-        }
-        return new CapturedFile(
-                target.getFileName().toString(),
-                file.getOriginalFilename(),
-                file.getContentType(),
-                size,
-                HexFormat.of().formatHex(digest.digest())
-        );
-    }
-
-    private MessageDigest sha256() {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    private void writeJson(Path path, Object value) throws IOException {
-        Files.createDirectories(path.getParent());
-        objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), value);
     }
 
     private Map<String, Object> errorBody(RuntimeException error) {
@@ -209,17 +166,6 @@ public class FixtureCaptureService {
             }
         }
         return map;
-    }
-
-    private String safeFileName(String filename) {
-        if (filename == null || filename.isBlank()) {
-            return "upload.bin";
-        }
-        return sanitize(filename);
-    }
-
-    private String sanitize(String value) {
-        return value.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     public record CaptureRecord(boolean enabled, Path directory) {

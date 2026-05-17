@@ -22,13 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
-public class FloorApplicationService {
+public class FloorUseCase {
     private final BuildingRepository buildingRepository;
     private final FloorRepository floorRepository;
     private final FloorScanRepository floorScanRepository;
     private final MapNodeRepository mapNodeRepository;
 
-    public FloorApplicationService(
+    public FloorUseCase(
             BuildingRepository buildingRepository,
             FloorRepository floorRepository,
             FloorScanRepository floorScanRepository,

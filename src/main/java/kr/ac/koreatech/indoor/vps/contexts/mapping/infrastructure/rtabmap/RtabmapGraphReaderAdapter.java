@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.EdgeType;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.NodeType;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
@@ -20,9 +21,10 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 @Component
-public class RtabmapGraphReader {
+public class RtabmapGraphReaderAdapter implements RtabmapGraphReader {
     private final GeometryFactory geometryFactory = new GeometryFactory();
 
+    @Override
     public RtabmapGraph read(Path dbPath, UUID scanId, UUID buildJobId) {
         try {
             JdbcClient jdbcClient = JdbcClient.create(dataSource(dbPath));
@@ -128,9 +130,6 @@ public class RtabmapGraphReader {
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    public record RtabmapGraph(List<MapNodeEntity> nodes, List<MapEdgeEntity> edges) {
-    }
-
     private record NodeRow(int rtabmapId, double x, double y, double z, String label) {
     }
 
@@ -138,15 +137,5 @@ public class RtabmapGraphReader {
     }
 
     private record Pose(double x, double y, double z) {
-    }
-
-    public static class RtabmapGraphReadException extends RuntimeException {
-        public RtabmapGraphReadException(String message) {
-            super(message);
-        }
-
-        public RtabmapGraphReadException(String message, Throwable cause) {
-            super(message, cause);
-        }
     }
 }

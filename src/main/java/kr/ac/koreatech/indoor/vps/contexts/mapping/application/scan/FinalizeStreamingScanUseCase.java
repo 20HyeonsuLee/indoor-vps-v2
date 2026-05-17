@@ -1,7 +1,7 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
@@ -20,13 +20,13 @@ import org.springframework.web.multipart.MultipartFile;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class FinalizeStreamingScanUseCase {
 
-    private final FloorApplicationService floorService;
+    private final FloorUseCase floorService;
     private final ScanIngestRepository scanIngestRepository;
     private final FloorScanRepository floorScanRepository;
     private final StreamingScanStorage streamingScanStorage;
 
     public FinalizeStreamingScanUseCase(
-            FloorApplicationService floorService,
+            FloorUseCase floorService,
             ScanIngestRepository scanIngestRepository,
             FloorScanRepository floorScanRepository,
             StreamingScanStorage streamingScanStorage

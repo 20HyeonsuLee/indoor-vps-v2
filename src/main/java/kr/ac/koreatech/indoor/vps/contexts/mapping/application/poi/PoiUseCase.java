@@ -5,7 +5,7 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.PoiCanonicalEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.PoiCanonicalRepository;
 import org.locationtech.jts.geom.Coordinate;
@@ -17,27 +17,27 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
-public class PoiApplicationService {
-    private final BuildingApplicationService buildingService;
+public class PoiUseCase {
+    private final BuildingUseCase buildingUseCase;
     private final PoiCanonicalRepository poiCanonicalRepository;
 
-    public PoiApplicationService(
-            BuildingApplicationService buildingService,
+    public PoiUseCase(
+            BuildingUseCase buildingUseCase,
             PoiCanonicalRepository poiCanonicalRepository
     ) {
-        this.buildingService = buildingService;
+        this.buildingUseCase = buildingUseCase;
         this.poiCanonicalRepository = poiCanonicalRepository;
     }
 
     public List<POIResponse> listPois(UUID buildingId) {
-        buildingService.requireBuilding(buildingId);
+        buildingUseCase.requireBuilding(buildingId);
         return poiCanonicalRepository.findByBuilding_BuildingIdOrderByNameAscLabelAsc(buildingId).stream()
                 .map(this::toPoiResponse)
                 .toList();
     }
 
     public List<POIResponse> searchPois(UUID buildingId, String query) {
-        buildingService.requireBuilding(buildingId);
+        buildingUseCase.requireBuilding(buildingId);
         if (query == null || query.isBlank()) {
             return listPois(buildingId);
         }

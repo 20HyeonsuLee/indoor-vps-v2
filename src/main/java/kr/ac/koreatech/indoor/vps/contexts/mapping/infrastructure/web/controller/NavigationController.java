@@ -4,9 +4,13 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.NavigationApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.NavigationResponseMapper;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PlanRouteUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PlanRouteUseCase.FloorRouteResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,10 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 @Tag(name = "길찾기")
 public class NavigationController {
-    private final NavigationApplicationService service;
+    private final PlanRouteUseCase planRouteUseCase;
+    private final NavigationResponseMapper responseMapper;
 
-    public NavigationController(NavigationApplicationService service) {
-        this.service = service;
+    public NavigationController(PlanRouteUseCase planRouteUseCase, NavigationResponseMapper responseMapper) {
+        this.planRouteUseCase = planRouteUseCase;
+        this.responseMapper = responseMapper;
     }
 
     @GetMapping("/floors/{floorId}/route")
@@ -31,7 +37,16 @@ public class NavigationController {
             @RequestParam(name = "from") UUID fromNode,
             @RequestParam(name = "to") UUID toNode
     ) {
-        return service.floorRoute(floorId, fromNode, toNode);
+        FloorRouteResult result = planRouteUseCase.floorRoute(floorId, fromNode, toNode);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("floorId", result.floorId());
+        response.put("scanId", result.scanId());
+        response.put("from", result.fromNode());
+        response.put("to", result.toNode());
+        response.put("totalDistance", result.totalDistance());
+        response.put("nodes", result.nodes().stream().map(responseMapper::nodeMap).toList());
+        response.put("edges", result.edges().stream().map(responseMapper::edgeMap).toList());
+        return response;
     }
 
     @PostMapping("/buildings/{buildingId}/pathfinding")
@@ -39,6 +54,6 @@ public class NavigationController {
             @PathVariable UUID buildingId,
             @Valid @RequestBody PathfindingRequest request
     ) {
-        return service.pathfinding(buildingId, request);
+        return planRouteUseCase.pathfinding(buildingId, request);
     }
 }

@@ -3,20 +3,17 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.build;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader.RtabmapGraph;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader.RtabmapGraphReadException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapEdgeRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapNodeRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap.RtabmapGraphReader;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap.RtabmapGraphReader.RtabmapGraph;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessResult;
@@ -30,32 +27,29 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class BuildJobRunner {
     private final BuildJobRepository buildJobRepository;
     private final ScanIngestRepository scanIngestRepository;
-    private final MapNodeRepository mapNodeRepository;
-    private final MapEdgeRepository mapEdgeRepository;
     private final RtabmapGraphReader graphReader;
     private final RtabmapReprocessor reprocessService;
     private final IndoorProperties properties;
     private final TransactionTemplate transactionTemplate;
+    private final BuildGraphPersister graphPersister;
     private final String workerId = "spring-build-worker-" + UUID.randomUUID();
 
     public BuildJobRunner(
             BuildJobRepository buildJobRepository,
             ScanIngestRepository scanIngestRepository,
-            MapNodeRepository mapNodeRepository,
-            MapEdgeRepository mapEdgeRepository,
             RtabmapGraphReader graphReader,
             RtabmapReprocessor reprocessService,
             IndoorProperties properties,
-            TransactionTemplate transactionTemplate
+            TransactionTemplate transactionTemplate,
+            BuildGraphPersister graphPersister
     ) {
         this.buildJobRepository = buildJobRepository;
         this.scanIngestRepository = scanIngestRepository;
-        this.mapNodeRepository = mapNodeRepository;
-        this.mapEdgeRepository = mapEdgeRepository;
         this.graphReader = graphReader;
         this.reprocessService = reprocessService;
         this.properties = properties;
         this.transactionTemplate = transactionTemplate;
+        this.graphPersister = graphPersister;
     }
 
     @Scheduled(fixedDelayString = "${indoor.build-worker.poll-interval-ms:2000}")
@@ -102,8 +96,10 @@ public class BuildJobRunner {
             if (graph.nodes().isEmpty()) {
                 throw new BuildInputException("rtabmap graph has no nodes");
             }
-            transactionTemplate.executeWithoutResult(status -> persistSuccess(buildJobId, input, graph, reprocess));
-        } catch (BuildInputException | RtabmapGraphReader.RtabmapGraphReadException e) {
+            transactionTemplate.executeWithoutResult(
+                    status -> graphPersister.persistSuccess(buildJobId, input.scanId(), input.dbPath(), graph, reprocess)
+            );
+        } catch (BuildInputException | RtabmapGraphReadException e) {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
         } catch (RtabmapReprocessException e) {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
@@ -121,39 +117,6 @@ public class BuildJobRunner {
                 job.getScan().getScanId(),
                 rtabmapDbPath(job.getScan().getStoragePath())
         ));
-    }
-
-    private void persistSuccess(
-            UUID buildJobId,
-            JobInput input,
-            RtabmapGraph graph,
-            RtabmapReprocessResult reprocess
-    ) {
-        BuildJobEntity job = buildJobRepository.findById(buildJobId).orElseThrow();
-        if (job.getState() != BuildState.running) {
-            return;
-        }
-        job.markPersisting();
-        mapEdgeRepository.deleteByScanId(input.scanId());
-        mapNodeRepository.deleteByScanId(input.scanId());
-        mapNodeRepository.saveAll(graph.nodes());
-        mapEdgeRepository.saveAll(graph.edges());
-
-        Map<String, Object> counts = new LinkedHashMap<>();
-        counts.put("build_source", reprocess.hasUsableOutput()
-                ? "rtabmap_reprocessed_sqlite"
-                : "rtabmap_node_link_sqlite");
-        counts.put("map_nodes", graph.nodes().size());
-        counts.put("map_edges", graph.edges().size());
-        counts.put("rtabmap", Map.of(
-                "db_path", reprocess.effectiveDbPath().toString(),
-                "raw_db_path", input.dbPath().toString(),
-                "reprocess", reprocess.metadata()
-        ));
-        job.markSucceeded(counts);
-        job.getScan().changeBuildState(BuildState.succeeded);
-        buildJobRepository.saveAndFlush(job);
-        scanIngestRepository.saveAndFlush(job.getScan());
     }
 
     private void markFailure(UUID buildJobId, BuildFailureReason reason, String detail) {

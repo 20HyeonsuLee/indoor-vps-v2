@@ -5,7 +5,7 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 import java.util.List;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.building.BuildingStatus;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildingEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildingRepository;
@@ -17,13 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
-public class BuildingApplicationService {
+public class BuildingUseCase {
     private final BuildingRepository buildingRepository;
-    private final FloorApplicationService floors;
+    private final FloorUseCase floors;
 
-    public BuildingApplicationService(
+    public BuildingUseCase(
             BuildingRepository buildingRepository,
-            FloorApplicationService floors
+            FloorUseCase floors
     ) {
         this.buildingRepository = buildingRepository;
         this.floors = floors;

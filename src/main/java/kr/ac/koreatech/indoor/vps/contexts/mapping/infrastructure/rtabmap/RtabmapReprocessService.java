@@ -1,15 +1,9 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -26,7 +20,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class RtabmapReprocessService implements RtabmapReprocessor {
     private static final Logger log = LoggerFactory.getLogger(RtabmapReprocessService.class);
-    private static final String RTABMAP_PARAMS = "Mem/IncrementalMemory=true;Rtabmap/DetectionRate=0;";
 
     private final IndoorProperties properties;
 
@@ -59,7 +52,7 @@ public class RtabmapReprocessService implements RtabmapReprocessor {
             );
             return failOrFallback(config, result);
         }
-        Optional<Path> binary = resolveExecutable(config.getExecutable());
+        Optional<Path> binary = RtabmapProcessUtils.resolveExecutable(config.getExecutable());
         if (binary.isEmpty()) {
             RtabmapReprocessResult result = RtabmapReprocessResult.skipped(
                     "binary_not_available",
@@ -74,7 +67,7 @@ public class RtabmapReprocessService implements RtabmapReprocessor {
         }
 
         Path outputDb = inputDb.getParent().resolve("rtabmap_reprocessed.db");
-        if (Files.exists(outputDb) && hasGraphRows(outputDb)) {
+        if (Files.exists(outputDb) && RtabmapProcessUtils.hasGraphRows(outputDb)) {
             return RtabmapReprocessResult.alreadyReprocessed(inputDb, outputDb, binary.get());
         }
         if (Files.exists(outputDb)) {
@@ -128,8 +121,8 @@ public class RtabmapReprocessService implements RtabmapReprocessor {
                         command,
                         duration,
                         -1,
-                        tail(stdoutLog),
-                        tail(stderrLog)
+                        RtabmapProcessUtils.tail(stdoutLog),
+                        RtabmapProcessUtils.tail(stderrLog)
                 );
                 return failOrFallback(config, result);
             }
@@ -142,8 +135,8 @@ public class RtabmapReprocessService implements RtabmapReprocessor {
                         command,
                         duration,
                         process.exitValue(),
-                        tail(stdoutLog),
-                        tail(stderrLog)
+                        RtabmapProcessUtils.tail(stdoutLog),
+                        RtabmapProcessUtils.tail(stderrLog)
                 );
                 return failOrFallback(config, result);
             }
@@ -153,8 +146,8 @@ public class RtabmapReprocessService implements RtabmapReprocessor {
                     binary.get(),
                     command,
                     duration,
-                    tail(stdoutLog),
-                    tail(stderrLog)
+                    RtabmapProcessUtils.tail(stdoutLog),
+                    RtabmapProcessUtils.tail(stderrLog)
             );
         } catch (IOException e) {
             RtabmapReprocessResult result = RtabmapReprocessResult.failed(
@@ -198,165 +191,7 @@ public class RtabmapReprocessService implements RtabmapReprocessor {
     }
 
     private void ensureRtabmapCompatibility(Path dbPath) throws IOException, SQLException {
-        Files.createDirectories(dbPath.getParent());
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath)) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("""
-                        CREATE TABLE IF NOT EXISTS Word (
-                            id INTEGER NOT NULL,
-                            descriptor_size INTEGER NOT NULL,
-                            descriptor BLOB NOT NULL,
-                            time_enter DATE,
-                            PRIMARY KEY (id)
-                        )
-                        """);
-                statement.execute("""
-                        CREATE TABLE IF NOT EXISTS Feature (
-                            node_id INTEGER NOT NULL,
-                            word_id INTEGER NOT NULL,
-                            pos_x FLOAT NOT NULL,
-                            pos_y FLOAT NOT NULL,
-                            size INTEGER NOT NULL,
-                            dir FLOAT NOT NULL,
-                            response FLOAT NOT NULL,
-                            octave INTEGER NOT NULL,
-                            depth_x FLOAT,
-                            depth_y FLOAT,
-                            depth_z FLOAT,
-                            descriptor_size INTEGER,
-                            descriptor BLOB
-                        )
-                        """);
-                statement.execute("""
-                        CREATE TABLE IF NOT EXISTS GlobalDescriptor (
-                            node_id INTEGER NOT NULL,
-                            type INTEGER NOT NULL,
-                            info BLOB,
-                            data BLOB NOT NULL
-                        )
-                        """);
-                statement.execute("""
-                        CREATE TABLE IF NOT EXISTS Info (
-                            STM_size INTEGER,
-                            last_sign_added INTEGER,
-                            process_mem_used INTEGER,
-                            database_mem_used INTEGER,
-                            dictionary_size INTEGER,
-                            parameters TEXT,
-                            time_enter DATE
-                        )
-                        """);
-                statement.execute("""
-                        CREATE TABLE IF NOT EXISTS Statistics (
-                            id INTEGER NOT NULL,
-                            stamp FLOAT,
-                            data BLOB,
-                            wm_state BLOB
-                        )
-                        """);
-                statement.execute("""
-                        CREATE TABLE IF NOT EXISTS Admin (
-                            version TEXT,
-                            preview_image BLOB,
-                            opt_cloud BLOB,
-                            opt_ids BLOB,
-                            opt_poses BLOB,
-                            opt_last_localization BLOB,
-                            opt_polygons_size INTEGER,
-                            opt_polygons BLOB,
-                            opt_tex_coords BLOB,
-                            opt_tex_materials BLOB,
-                            opt_map BLOB,
-                            opt_map_x_min FLOAT,
-                            opt_map_y_min FLOAT,
-                            opt_map_resolution FLOAT,
-                            dictionary_index BLOB,
-                            time_enter DATE
-                        )
-                        """);
-            }
-            ensureDataColumn(connection, "depth_confidence", "BLOB");
-            ensureDataColumn(connection, "ground_cells", "BLOB");
-            ensureDataColumn(connection, "obstacle_cells", "BLOB");
-            ensureDataColumn(connection, "empty_cells", "BLOB");
-            ensureDataColumn(connection, "cell_size", "FLOAT");
-            ensureDataColumn(connection, "view_point_x", "FLOAT");
-            ensureDataColumn(connection, "view_point_y", "FLOAT");
-            ensureDataColumn(connection, "view_point_z", "FLOAT");
-            ensureDataColumn(connection, "time_enter", "DATE");
-            try (PreparedStatement adminInsert = connection.prepareStatement("""
-                    INSERT INTO Admin(version, time_enter)
-                    SELECT '0.23.5', datetime('now')
-                    WHERE NOT EXISTS (SELECT 1 FROM Admin)
-                    """);
-                 PreparedStatement infoInsert = connection.prepareStatement("""
-                         INSERT INTO Info(
-                            STM_size, last_sign_added, process_mem_used, database_mem_used, dictionary_size, parameters, time_enter
-                         )
-                         SELECT 0, 0, 0, 0, 0, ?, datetime('now')
-                         WHERE NOT EXISTS (SELECT 1 FROM Info)
-                         """)) {
-                adminInsert.executeUpdate();
-                infoInsert.setString(1, RTABMAP_PARAMS);
-                infoInsert.executeUpdate();
-            }
-        }
+        RtabmapSchemaFixer.ensureCompatibility(dbPath);
     }
 
-    private void ensureDataColumn(Connection connection, String name, String definition) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("PRAGMA table_info(Data)");
-             ResultSet result = statement.executeQuery()) {
-            while (result.next()) {
-                if (name.equalsIgnoreCase(result.getString("name"))) {
-                    return;
-                }
-            }
-        }
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("ALTER TABLE Data ADD COLUMN " + name + " " + definition);
-        }
-    }
-
-    private boolean hasGraphRows(Path dbPath) {
-        if (!Files.exists(dbPath)) {
-            return false;
-        }
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
-             Statement statement = connection.createStatement();
-             ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM Node")) {
-            return result.next() && result.getInt(1) > 0;
-        } catch (SQLException e) {
-            return false;
-        }
-    }
-
-    private Optional<Path> resolveExecutable(String executable) {
-        if (executable == null || executable.isBlank()) {
-            return Optional.empty();
-        }
-        Path configured = Path.of(executable);
-        if (configured.isAbsolute() || configured.getParent() != null) {
-            return Files.isExecutable(configured) ? Optional.of(configured) : Optional.empty();
-        }
-        String pathEnv = System.getenv("PATH");
-        if (pathEnv == null || pathEnv.isBlank()) {
-            return Optional.empty();
-        }
-        for (String entry : pathEnv.split(java.io.File.pathSeparator)) {
-            Path candidate = Path.of(entry).resolve(executable);
-            if (Files.isExecutable(candidate)) {
-                return Optional.of(candidate);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private String tail(Path path) throws IOException {
-        if (!Files.exists(path)) {
-            return "";
-        }
-        byte[] bytes = Files.readAllBytes(path);
-        int start = Math.max(0, bytes.length - 2000);
-        return new String(bytes, start, bytes.length - start, StandardCharsets.UTF_8);
-    }
 }

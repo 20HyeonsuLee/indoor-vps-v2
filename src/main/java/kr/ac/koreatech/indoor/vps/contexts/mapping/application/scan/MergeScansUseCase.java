@@ -8,7 +8,7 @@ import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.MergeScanBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.MergeScanBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.PythonBridgeClient;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
@@ -26,14 +26,14 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class MergeScansUseCase {
 
-    private final FloorApplicationService floorService;
+    private final FloorUseCase floorService;
     private final ScanIngestRepository scanIngestRepository;
     private final FloorScanRepository floorScanRepository;
     private final PythonBridgeClient bridgeClient;
     private final IndoorProperties properties;
 
     public MergeScansUseCase(
-            FloorApplicationService floorService,
+            FloorUseCase floorService,
             ScanIngestRepository scanIngestRepository,
             FloorScanRepository floorScanRepository,
             PythonBridgeClient bridgeClient,

@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StartedStreamingScan;
@@ -21,13 +21,13 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class StartStreamingScanUseCase {
 
-    private final FloorApplicationService floorService;
+    private final FloorUseCase floorService;
     private final ScanIngestRepository scanIngestRepository;
     private final StreamingScanStorage streamingScanStorage;
     private final ObjectMapper objectMapper;
 
     public StartStreamingScanUseCase(
-            FloorApplicationService floorService,
+            FloorUseCase floorService,
             ScanIngestRepository scanIngestRepository,
             StreamingScanStorage streamingScanStorage,
             ObjectMapper objectMapper
