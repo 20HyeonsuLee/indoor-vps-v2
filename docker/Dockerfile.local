@@ -24,6 +24,16 @@ COPY --from=build /workspace/build/libs/*.jar /app/app.jar
 COPY --from=build /workspace/scripts /app/scripts
 COPY --from=build /workspace/python /app/python
 
+RUN apt-get update && apt-get install -y --no-install-recommends python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir --break-system-packages \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.3.0 torchvision==0.18.0 \
+    && pip3 install --no-cache-dir --break-system-packages \
+        "pillow>=10.0.0" "numpy>=1.26.0,<2" "opencv-contrib-python>=4.9.0" \
+        "scipy>=1.13.0" "lightglue @ git+https://github.com/cvg/LightGlue.git"
+
+ENV PYTHONPATH=/app/python/legacy_backend/src
 ENV SERVER_PORT=8080 \
     SPRING_PROFILES_ACTIVE=local \
     STORAGE_ROOT=/data/storage \
