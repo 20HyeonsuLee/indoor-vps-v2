@@ -12,9 +12,4 @@ public class DocsAliasController {
     public RedirectView springdocJsonAlias() {
         return new RedirectView("/openapi.json");
     }
-
-    @GetMapping({"/swagger-ui", "/swagger-ui/", "/swagger-ui/index.html"})
-    public RedirectView swaggerUiAlias() {
-        return new RedirectView("/docs");
-    }
 }

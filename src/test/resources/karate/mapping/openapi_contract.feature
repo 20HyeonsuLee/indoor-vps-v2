@@ -37,15 +37,17 @@ Feature: OpenAPI 명세 표면과 호환성 alias가 규격대로 동작한다
     }
     """
 
-  Scenario: /v3/api-docs 는 /openapi.json 으로 3xx redirect 한다
-    Given path 'v3', 'api-docs'
+  Scenario: /docs 는 Swagger UI HTML 을 200 으로 반환한다
+    Given path 'docs'
     When method get
-    Then status 302
+    Then status 200
+    And match responseHeaders['Content-Type'][0] contains 'text/html'
 
-  Scenario: /swagger-ui/index.html 는 /docs 로 3xx redirect 한다
+  Scenario: /swagger-ui/index.html 는 Swagger UI HTML 을 200 으로 반환한다
     Given path 'swagger-ui', 'index.html'
     When method get
-    Then status 302
+    Then status 200
+    And match responseHeaders['Content-Type'][0] contains 'text/html'
 
   Scenario: Python bridge 비활성 상태에서 localize 요청은 503 오류를 반환한다
     Given path 'api', 'slam', 'v3', 'localize'
