@@ -24,3 +24,19 @@ Device selection is explicit:
 
 The Python code does not auto-upgrade to CUDA based on
 `torch.cuda.is_available()`.
+
+## Invocation
+
+ProcessBuilder에서 호출:
+
+```
+uv run --project python/legacy_backend python -m legacy_backend.<entry_module>
+```
+
+예: localize 파이프라인
+
+```
+uv run --project python/legacy_backend python -m indoor_server.application.slam.localize
+```
+
+stdin으로 JSON 1개, stdout으로 결과 JSON 1개, 실패 시 exit code != 0 + stderr JSON `{error_code, message}`.

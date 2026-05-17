@@ -42,7 +42,7 @@ _project_meta:
   validation:
     install:
       - "./gradlew dependencies"
-      - "pip install -r python/<pipeline>/requirements.txt"
+      - "uv sync --project python/<pipeline>"
     build: ["./gradlew build -x test"]
     test: ["./gradlew test"]
     e2e: ["./gradlew karateTest"]
@@ -118,7 +118,7 @@ _project_meta:
 
   python_integration:
     invocation: "ProcessBuilder + stdin/stdout (JSON 문자열)"
-    entry_convention: "python/<pipeline>/main.py 가 유일한 진입점"
+    entry_convention: "python/<pipeline>/main.py 또는 pyproject.toml entry-point (ADR-009)"
     input_format: "stdin으로 JSON 1개"
     output_format: "stdout으로 결과 JSON 1개"
     error_protocol:
@@ -153,6 +153,9 @@ _project_meta:
     - id: ADR-008
       title: "Domain에 Spring/JPA 의존 허용 — Pure POJO 격리 포기"
       rationale: "Repository는 Spring Data JPA interface를 domain에 직접 선언, Aggregate Root에 @Entity 직접 부착. 매퍼/구현체 보일러플레이트 제거. 트레이드오프: domain 단위 테스트가 JPA 기동 필요할 수 있음. 현 규모에서 보일러플레이트 비용이 격리 이득보다 크다고 판단."
+    - id: ADR-009
+      title: "Python entry는 pyproject.toml + uv 또는 main.py 둘 다 허용"
+      rationale: "uv/pyproject.toml이 modern Python 표준이고 이미 uv.lock 채택. main.py 강제는 신규 lib 추가 비용 + 기존 자산 폐기 비용 큼. ProcessBuilder가 어느 entry든 호출 가능하므로 진입점 형식만 완화."
 
 _anchors:
   base_context_meta: &base_context_meta
@@ -221,12 +224,11 @@ _project_struct:
     <pipeline-name>:
       _meta_local:
         intent: "한 파이프라인의 entry script + 의존성 + 보조 모듈"
-        contains: ["main.py", "requirements.txt", "보조 .py 모듈"]
+        contains: ["main.py 또는 pyproject.toml + entry script", "requirements.txt 또는 pyproject.toml", "보조 .py 모듈"]
         forbidden:
-          - "main.py 외 진입점 금지"
           - "다른 파이프라인 폴더 import 금지"
         naming:
-          - "entry는 main.py 고정"
+          - "entry는 main.py 또는 pyproject.toml entry-point (ADR-009)"
           - "보조 모듈은 snake_case"
         split_signals:
           - "file_lines > 200"
