@@ -8,7 +8,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -34,6 +33,10 @@ public class PoiCanonicalEntity {
     @JoinColumn(name = "floor_id")
     private FloorEntity floor;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "area_id")
+    private FloorAreaEntity area;
+
     @Column(nullable = false)
     private String category;
 
@@ -47,9 +50,6 @@ public class PoiCanonicalEntity {
 
     @Column(name = "route_node_id")
     private UUID routeNodeId;
-
-    @Column(name = "level_id")
-    private String levelId;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "source_mark_ids", columnDefinition = "jsonb")
@@ -69,7 +69,7 @@ public class PoiCanonicalEntity {
             UUID scanId,
             BuildingEntity building,
             FloorEntity floor,
-            String levelId,
+            FloorAreaEntity area,
             String label,
             String category,
             Point worldPose,
@@ -81,7 +81,7 @@ public class PoiCanonicalEntity {
         entity.scanId = scanId;
         entity.building = building;
         entity.floor = floor;
-        entity.levelId = levelId;
+        entity.area = area;
         entity.label = label;
         entity.name = label;
         entity.category = category;
@@ -108,6 +108,10 @@ public class PoiCanonicalEntity {
         return floor;
     }
 
+    public FloorAreaEntity getArea() {
+        return area;
+    }
+
     public String getCategory() {
         return category;
     }
@@ -130,10 +134,6 @@ public class PoiCanonicalEntity {
 
     public boolean isNeedsReview() {
         return needsReview;
-    }
-
-    public String getLevelId() {
-        return levelId;
     }
 
     public List<Long> getSourceMarkIds() {

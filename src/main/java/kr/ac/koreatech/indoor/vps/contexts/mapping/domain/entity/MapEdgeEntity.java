@@ -42,6 +42,9 @@ public class MapEdgeEntity {
     @Column(name = "length_m", nullable = false)
     private double lengthM;
 
+    @Column(name = "area_id", nullable = false)
+    private UUID areaId;
+
     @Column(name = "is_stale", nullable = false)
     private boolean stale;
 
@@ -52,6 +55,7 @@ public class MapEdgeEntity {
             UUID edgeId,
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             UUID fromNodeId,
             UUID toNodeId,
             EdgeType edgeType,
@@ -62,6 +66,7 @@ public class MapEdgeEntity {
         entity.edgeId = edgeId;
         entity.scanId = scanId;
         entity.buildJobId = buildJobId;
+        entity.areaId = areaId;
         entity.fromNodeId = fromNodeId;
         entity.toNodeId = toNodeId;
         entity.edgeType = edgeType;
@@ -81,6 +86,10 @@ public class MapEdgeEntity {
 
     public UUID getBuildJobId() {
         return buildJobId;
+    }
+
+    public UUID getAreaId() {
+        return areaId;
     }
 
     public UUID getFromNodeId() {

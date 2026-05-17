@@ -2,7 +2,7 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.FinalizedStreamingScan;
@@ -33,7 +33,10 @@ public class FinalizeStreamingScanUseCase {
     public ScanFinalizeResult execute(FinalizeStreamingScanCommand command) {
         UUID scanId = command.scanId();
         FinalizedStreamingScan finalized = streamingScanStorage.finalizeScan(scanId, command.manifest(), command.metadata());
-        FloorEntity floor = floorService.requireFloor(finalized.floorId());
+        FloorAreaEntity area = floorService.defaultArea(finalized.floorId())
+                .orElseThrow(() -> new kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException(
+                        org.springframework.http.HttpStatus.NOT_FOUND,
+                        "DEFAULT_AREA_NOT_FOUND", "floor has no default area"));
         ScanIngestEntity scan = scanPersistence.findScan(scanId)
                 .map(existing -> {
                     existing.replacePayload(finalized.payloadSha256(), finalized.storagePath(), finalized.deviceInfo());
@@ -43,12 +46,13 @@ public class FinalizeStreamingScanUseCase {
                         scanId,
                         finalized.payloadSha256(),
                         finalized.storagePath(),
-                        finalized.deviceInfo()
+                        finalized.deviceInfo(),
+                        area.getAreaId()
                 ));
         ScanIngestEntity persistedScan = scanPersistence.saveScan(scan);
         String fileName = ScanNaming.streamingScanFileName(scanId);
         scanPersistence.saveFloorScanActive(
-                finalized.floorId(), floor, persistedScan,
+                finalized.floorId(), area, persistedScan,
                 fileName, finalized.fileSize(), "READY"
         );
         return new ScanFinalizeResult(

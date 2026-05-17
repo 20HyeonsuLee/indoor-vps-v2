@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ArKitToRtabmap;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildingEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaPolygonEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
@@ -21,6 +22,7 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.EdgeType;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.NodeType;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.Point3;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildingRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorAreaRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.VerticalConnectorRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.VerticalConnectorStopRepository;
@@ -47,6 +49,7 @@ class ScanMetadataIntegrator {
 
     private final BuildingRepository buildingRepository;
     private final FloorRepository floorRepository;
+    private final FloorAreaRepository floorAreaRepository;
     private final VerticalConnectorRepository verticalConnectorRepository;
     private final VerticalConnectorStopRepository verticalConnectorStopRepository;
     private final GeometryFactory geometryFactory = new GeometryFactory();
@@ -55,17 +58,20 @@ class ScanMetadataIntegrator {
     ScanMetadataIntegrator(
             BuildingRepository buildingRepository,
             FloorRepository floorRepository,
+            FloorAreaRepository floorAreaRepository,
             VerticalConnectorRepository verticalConnectorRepository,
             VerticalConnectorStopRepository verticalConnectorStopRepository
     ) {
         this.buildingRepository = buildingRepository;
         this.floorRepository = floorRepository;
+        this.floorAreaRepository = floorAreaRepository;
         this.verticalConnectorRepository = verticalConnectorRepository;
         this.verticalConnectorStopRepository = verticalConnectorStopRepository;
     }
 
-    IntegrationResult integrate(UUID scanId, UUID buildJobId, ScanMetadata metadata) {
+    IntegrationResult integrate(UUID scanId, UUID buildJobId, UUID areaId, ScanMetadata metadata) {
         SessionInfo session = metadata.session();
+        FloorAreaEntity area = floorAreaRepository.findById(areaId).orElse(null);
 
         List<MapNodeEntity> nodes = new ArrayList<>();
         List<MapEdgeEntity> edges = new ArrayList<>();
@@ -74,20 +80,20 @@ class ScanMetadataIntegrator {
         List<VerticalConnectorStopEntity> stops = new ArrayList<>();
 
         Map<Long, MapNodeEntity> corridorById = buildCorridorNodes(
-                scanId, buildJobId, metadata.branchMarks(), nodes);
+                scanId, buildJobId, areaId, metadata.branchMarks(), nodes);
 
-        buildBranchEdges(scanId, buildJobId, metadata.branchEdges(), corridorById, edges);
+        buildBranchEdges(scanId, buildJobId, areaId, metadata.branchEdges(), corridorById, edges);
 
-        edgeSnapper.snap(scanId, buildJobId, corridorById, edges, nodes);
+        edgeSnapper.snap(scanId, buildJobId, areaId, corridorById, edges, nodes);
 
         buildPolygons(scanId, buildJobId, metadata.branchMarks(), metadata.branchEdges(),
-                session, polygons);
+                session, area, polygons);
 
-        applyPoiMarks(metadata.poiMarks(), session, scanId, buildJobId,
-                corridorById, nodes, edges, pois);
+        applyPoiMarks(metadata.poiMarks(), session, scanId, buildJobId, areaId,
+                area, corridorById, nodes, edges, pois);
 
-        applyInterfloorMarks(metadata.interfloorMarks(), session, scanId, buildJobId,
-                corridorById, nodes, edges, pois, stops);
+        applyInterfloorMarks(metadata.interfloorMarks(), session, scanId, buildJobId, areaId,
+                area, corridorById, nodes, edges, pois, stops);
 
         return new IntegrationResult(nodes, edges, polygons, pois, stops);
     }
@@ -95,6 +101,7 @@ class ScanMetadataIntegrator {
     private Map<Long, MapNodeEntity> buildCorridorNodes(
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             List<BranchMarkRow> marks,
             List<MapNodeEntity> nodes
     ) {
@@ -109,7 +116,7 @@ class ScanMetadataIntegrator {
             ref.put("branch_mark_id", mark.id());
             ref.put("connect_hint", mark.connectHint());
             MapNodeEntity node = MapNodeEntity.create(
-                    nodeId, scanId, buildJobId, NodeType.corridor, point(rtPos), null);
+                    nodeId, scanId, buildJobId, areaId, NodeType.corridor, point(rtPos), null);
             node.changeNodeType(NodeType.corridor, ref);
             nodes.add(node);
             corridorById.put(mark.id(), node);
@@ -120,6 +127,7 @@ class ScanMetadataIntegrator {
     private void buildBranchEdges(
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             List<BranchEdgeRow> branchEdges,
             Map<Long, MapNodeEntity> corridorById,
             List<MapEdgeEntity> edges
@@ -141,6 +149,7 @@ class ScanMetadataIntegrator {
                     deterministicUuid("seq-edge:" + scanId + ":" + edge.id()),
                     scanId,
                     buildJobId,
+                    areaId,
                     from.getNodeId(),
                     to.getNodeId(),
                     EdgeType.rtabmap_link,
@@ -156,6 +165,7 @@ class ScanMetadataIntegrator {
             List<BranchMarkRow> allMarks,
             List<BranchEdgeRow> branchEdges,
             SessionInfo session,
+            FloorAreaEntity area,
             List<FloorAreaPolygonEntity> polygons
     ) {
         FloorEntity floor = resolveFloor(session).orElse(null);
@@ -196,6 +206,7 @@ class ScanMetadataIntegrator {
                     scanId,
                     buildJobId,
                     floor,
+                    area,
                     sessionId,
                     polygon,
                     corners.stream().map(BranchMarkRow::id).toList()
@@ -223,6 +234,8 @@ class ScanMetadataIntegrator {
             SessionInfo session,
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
+            FloorAreaEntity area,
             Map<Long, MapNodeEntity> corridorById,
             List<MapNodeEntity> nodes,
             List<MapEdgeEntity> edges,
@@ -237,7 +250,7 @@ class ScanMetadataIntegrator {
             Point geom = point(rtPos);
 
             MapNodeEntity poiNode = MapNodeEntity.create(
-                    nodeId, scanId, buildJobId, NodeType.poi, geom, mark.label());
+                    nodeId, scanId, buildJobId, areaId, NodeType.poi, geom, mark.label());
             nodes.add(poiNode);
 
             PoiCanonicalEntity canonical = PoiCanonicalEntity.createFromMark(
@@ -245,7 +258,7 @@ class ScanMetadataIntegrator {
                     scanId,
                     building,
                     floor,
-                    session.floorLevel(),
+                    area,
                     mark.label(),
                     "unknown",
                     geom,
@@ -255,7 +268,7 @@ class ScanMetadataIntegrator {
             pois.add(canonical);
 
             findNearestCorridor(rtPos, corridorById).ifPresent(nearest -> {
-                edges.add(spurEdge(scanId, buildJobId, nodeId, nearest.getNodeId(),
+                edges.add(spurEdge(scanId, buildJobId, areaId, nodeId, nearest.getNodeId(),
                         rtPos, nodeCenter(nearest)));
             });
         }
@@ -266,6 +279,8 @@ class ScanMetadataIntegrator {
             SessionInfo session,
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
+            FloorAreaEntity area,
             Map<Long, MapNodeEntity> corridorById,
             List<MapNodeEntity> nodes,
             List<MapEdgeEntity> edges,
@@ -282,10 +297,9 @@ class ScanMetadataIntegrator {
             UUID nodeId = deterministicUuid("interfloor-node:" + scanId + ":" + mark.id());
             Point geom = point(rtPos);
             String connectorKey = mark.prefix() != null ? mark.prefix() : String.valueOf(mark.id());
-            String levelId = session.floorLevel() != null ? session.floorLevel() : "level-0";
 
             MapNodeEntity connectorNode = MapNodeEntity.create(
-                    nodeId, scanId, buildJobId, NodeType.poi, geom, connectorKey);
+                    nodeId, scanId, buildJobId, areaId, NodeType.poi, geom, connectorKey);
             nodes.add(connectorNode);
 
             VerticalConnectorEntity connector = upsertConnector(building, mark.connectorType(), connectorKey);
@@ -294,7 +308,7 @@ class ScanMetadataIntegrator {
                     scanId,
                     building,
                     resolveFloor(session).orElse(null),
-                    levelId,
+                    area,
                     connectorKey,
                     mark.connectorType() != null ? mark.connectorType() : "unknown",
                     geom,
@@ -302,10 +316,12 @@ class ScanMetadataIntegrator {
                     List.of(mark.id())
             );
             pois.add(stopPoi);
-            buildStop(connector, levelId, stopPoi, nodeId).ifPresent(stops::add);
+            if (area != null) {
+                buildStop(connector, area, stopPoi, nodeId).ifPresent(stops::add);
+            }
 
             findNearestCorridor(rtPos, corridorById).ifPresent(nearest -> {
-                edges.add(spurEdge(scanId, buildJobId, nodeId, nearest.getNodeId(),
+                edges.add(spurEdge(scanId, buildJobId, areaId, nodeId, nearest.getNodeId(),
                         rtPos, nodeCenter(nearest)));
             });
         }
@@ -351,23 +367,24 @@ class ScanMetadataIntegrator {
 
     private Optional<VerticalConnectorStopEntity> buildStop(
             VerticalConnectorEntity connector,
-            String levelId,
+            FloorAreaEntity area,
             PoiCanonicalEntity poi,
             UUID routeNodeId
     ) {
         verticalConnectorStopRepository
-                .findByConnector_ConnectorIdAndLevelId(connector.getConnectorId(), levelId)
+                .findByConnector_ConnectorIdAndArea_AreaId(connector.getConnectorId(), area.getAreaId())
                 .ifPresent(stop -> {
                     verticalConnectorStopRepository.delete(stop);
                     verticalConnectorStopRepository.flush();
                 });
         return Optional.of(VerticalConnectorStopEntity.create(
-                UUID.randomUUID(), connector, levelId, poi, routeNodeId));
+                UUID.randomUUID(), connector, area, poi, routeNodeId));
     }
 
     private MapEdgeEntity spurEdge(
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             UUID fromId,
             UUID toId,
             Point3 fromPos,
@@ -379,6 +396,7 @@ class ScanMetadataIntegrator {
                 deterministicUuid("spur:" + scanId + ":" + fromId + ":" + toId),
                 scanId,
                 buildJobId,
+                areaId,
                 fromId,
                 toId,
                 EdgeType.poi_spur,

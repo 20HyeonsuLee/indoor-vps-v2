@@ -21,8 +21,9 @@ public class VerticalConnectorStopEntity {
     @JoinColumn(name = "connector_id", nullable = false)
     private VerticalConnectorEntity connector;
 
-    @Column(name = "level_id", nullable = false)
-    private String levelId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "area_id", nullable = false)
+    private FloorAreaEntity area;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "poi_canonical_id")
@@ -37,14 +38,14 @@ public class VerticalConnectorStopEntity {
     public static VerticalConnectorStopEntity create(
             UUID stopId,
             VerticalConnectorEntity connector,
-            String levelId,
+            FloorAreaEntity area,
             PoiCanonicalEntity poiCanonical,
             UUID routeNodeId
     ) {
         VerticalConnectorStopEntity entity = new VerticalConnectorStopEntity();
         entity.connectorStopId = stopId;
         entity.connector = connector;
-        entity.levelId = levelId;
+        entity.area = area;
         entity.poiCanonical = poiCanonical;
         entity.routeNodeId = routeNodeId;
         return entity;
@@ -58,8 +59,8 @@ public class VerticalConnectorStopEntity {
         return connector;
     }
 
-    public String getLevelId() {
-        return levelId;
+    public FloorAreaEntity getArea() {
+        return area;
     }
 
     public PoiCanonicalEntity getPoiCanonical() {

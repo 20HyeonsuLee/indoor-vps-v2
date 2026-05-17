@@ -37,6 +37,7 @@ public class RtabmapGraphReaderAdapter implements RtabmapGraphReader {
                         nodeId(scanId, nodeRow.rtabmapId()),
                         scanId,
                         buildJobId,
+                        buildJobId, // areaId — validation-only, not persisted
                         NodeType.corridor,
                         geometryFactory.createPoint(new Coordinate(nodeRow.x(), nodeRow.y(), nodeRow.z())),
                         nodeRow.label()
@@ -63,6 +64,7 @@ public class RtabmapGraphReaderAdapter implements RtabmapGraphReader {
                                 edgeId(scanId, from.rtabmapId(), to.rtabmapId(), link.type()),
                                 scanId,
                                 buildJobId,
+                                buildJobId, // areaId — validation-only, not persisted
                                 nodeId(scanId, from.rtabmapId()),
                                 nodeId(scanId, to.rtabmapId()),
                                 EdgeType.rtabmap_link,

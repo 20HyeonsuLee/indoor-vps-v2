@@ -22,23 +22,19 @@ public interface VerticalConnectorRepository extends JpaRepository<VerticalConne
                 vc.name                                              AS name,
                 vc.is_mock                                           AS mock,
                 vcs.connector_stop_id                                AS stopId,
-                vcs.level_id                                         AS levelId,
+                bf.name                                              AS levelId,
                 COALESCE(vcs.route_node_id, p.route_node_id)        AS routeNodeId,
-                COALESCE(p.floor_id, bf.floor_id)                   AS floorId,
+                bf.floor_id                                          AS floorId,
                 ST_X(COALESCE(p.display_point, mn.geom))            AS x,
                 ST_Y(COALESCE(p.display_point, mn.geom))            AS y
             FROM vertical_connector vc
             LEFT JOIN vertical_connector_stop vcs ON vcs.connector_id = vc.connector_id
+            LEFT JOIN floor_area fa ON fa.area_id = vcs.area_id
+            LEFT JOIN building_floor bf ON bf.floor_id = fa.floor_id
             LEFT JOIN poi_canonical p ON p.canonical_id = vcs.poi_canonical_id
             LEFT JOIN map_node mn ON mn.node_id = COALESCE(vcs.route_node_id, p.route_node_id)
-            LEFT JOIN building_floor bf ON bf.building_id = vc.building_id
-                AND (
-                    bf.name = vcs.level_id
-                    OR bf.level::text = vcs.level_id
-                    OR ('level-' || bf.level::text) = vcs.level_id
-                )
             WHERE vc.building_id = :buildingId
-            ORDER BY vc.connector_type, vc.connector_key, vcs.level_id
+            ORDER BY vc.connector_type, vc.connector_key, fa.area_index
             """, nativeQuery = true)
     List<PassageRow> findPassageRowsByBuildingId(@Param("buildingId") UUID buildingId);
 

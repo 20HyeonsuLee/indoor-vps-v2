@@ -6,7 +6,7 @@ import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -35,7 +35,9 @@ public class MergeScansUseCase {
 
     @Transactional
     public MergedScanResult merge(UUID floorId, List<UUID> chunkIds) {
-        FloorEntity floor = floorService.requireFloor(floorId);
+        floorService.requireFloor(floorId);
+        FloorAreaEntity area = floorService.defaultArea(floorId)
+                .orElseThrow(() -> new ClientApiException(HttpStatus.NOT_FOUND, "DEFAULT_AREA_NOT_FOUND", "floor has no default area"));
         if (chunkIds == null || chunkIds.isEmpty()) {
             return mergeStatus(floorId);
         }
@@ -57,11 +59,12 @@ public class MergeScansUseCase {
                 mergedScanId,
                 merge.sha256(),
                 "scans/" + mergedScanId,
-                Map.of("merge", merge.diagnostics() == null ? Map.of() : merge.diagnostics())
+                Map.of("merge", merge.diagnostics() == null ? Map.of() : merge.diagnostics()),
+                area.getAreaId()
         ));
         scanPersistence.deactivateForFloor(floorId);
         FloorScanEntity floorScan = new FloorScanEntity(
-                floor,
+                area,
                 scan,
                 "merged_" + mergedScanId + ".db",
                 merge.fileSize(),

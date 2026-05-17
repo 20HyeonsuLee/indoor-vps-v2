@@ -7,5 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface VerticalConnectorStopRepository extends JpaRepository<VerticalConnectorStopEntity, UUID> {
 
-    Optional<VerticalConnectorStopEntity> findByConnector_ConnectorIdAndLevelId(UUID connectorId, String levelId);
+    Optional<VerticalConnectorStopEntity> findByConnector_ConnectorIdAndArea_AreaId(UUID connectorId, UUID areaId);
 }

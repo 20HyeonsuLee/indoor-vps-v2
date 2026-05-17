@@ -40,6 +40,9 @@ public class MapNodeEntity {
     @Column(name = "source_ref", columnDefinition = "jsonb")
     private Map<String, Object> sourceRef;
 
+    @Column(name = "area_id", nullable = false)
+    private UUID areaId;
+
     @Column(name = "is_stale", nullable = false)
     private boolean stale;
 
@@ -50,6 +53,7 @@ public class MapNodeEntity {
             UUID nodeId,
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             NodeType nodeType,
             Point geom,
             String label
@@ -58,6 +62,7 @@ public class MapNodeEntity {
         entity.nodeId = nodeId;
         entity.scanId = scanId;
         entity.buildJobId = buildJobId;
+        entity.areaId = areaId;
         entity.nodeType = nodeType;
         entity.geom = geom;
         entity.label = label;
@@ -75,6 +80,10 @@ public class MapNodeEntity {
 
     public UUID getBuildJobId() {
         return buildJobId;
+    }
+
+    public UUID getAreaId() {
+        return areaId;
     }
 
     public NodeType getNodeType() {

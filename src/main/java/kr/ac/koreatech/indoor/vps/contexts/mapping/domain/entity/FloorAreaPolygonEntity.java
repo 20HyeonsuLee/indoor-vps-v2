@@ -31,6 +31,10 @@ public class FloorAreaPolygonEntity {
     @JoinColumn(name = "floor_id")
     private FloorEntity floor;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "floor_area_id")
+    private FloorAreaEntity floorArea;
+
     @Column(name = "mark_session_id", nullable = false)
     private String markSessionId;
 
@@ -49,6 +53,7 @@ public class FloorAreaPolygonEntity {
             UUID scanId,
             UUID buildJobId,
             FloorEntity floor,
+            FloorAreaEntity floorArea,
             String markSessionId,
             Polygon polygon,
             List<Long> sourceMarkIds
@@ -58,6 +63,7 @@ public class FloorAreaPolygonEntity {
         entity.scanId = scanId;
         entity.buildJobId = buildJobId;
         entity.floor = floor;
+        entity.floorArea = floorArea;
         entity.markSessionId = markSessionId;
         entity.polygon = polygon;
         entity.sourceMarkIds = sourceMarkIds;
@@ -78,6 +84,10 @@ public class FloorAreaPolygonEntity {
 
     public FloorEntity getFloor() {
         return floor;
+    }
+
+    public FloorAreaEntity getFloorArea() {
+        return floorArea;
     }
 
     public String getMarkSessionId() {

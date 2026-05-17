@@ -3,6 +3,7 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
@@ -50,14 +51,14 @@ public class ScanPersistence {
     }
 
     @Transactional
-    public FloorScanEntity saveFloorScanActive(UUID floorId, FloorEntity floor, ScanIngestEntity scan,
+    public FloorScanEntity saveFloorScanActive(UUID floorId, FloorAreaEntity area, ScanIngestEntity scan,
             String fileName, long size, String status) {
         floorScanRepository.deactivateForFloor(floorId);
         floorScanRepository.flush();
         FloorScanEntity floorScan = floorScanRepository
                 .findByFloor_FloorIdAndScan_ScanId(floorId, scan.getScanId())
                 .orElseGet(() -> new FloorScanEntity(
-                        floor,
+                        area,
                         scan,
                         fileName,
                         size,

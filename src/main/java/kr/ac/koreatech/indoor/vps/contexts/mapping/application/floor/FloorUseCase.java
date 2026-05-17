@@ -5,8 +5,10 @@ import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildingEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorAreaRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,15 +26,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class FloorUseCase {
     private final BuildingQueryService buildingQuery;
     private final FloorRepository floorRepository;
+    private final FloorAreaRepository floorAreaRepository;
     private final FloorQueryService floorQueryService;
 
     public FloorUseCase(
             BuildingQueryService buildingQuery,
             FloorRepository floorRepository,
+            FloorAreaRepository floorAreaRepository,
             FloorQueryService floorQueryService
     ) {
         this.buildingQuery = buildingQuery;
         this.floorRepository = floorRepository;
+        this.floorAreaRepository = floorAreaRepository;
         this.floorQueryService = floorQueryService;
     }
 
@@ -41,7 +46,9 @@ public class FloorUseCase {
         BuildingEntity building = buildingQuery.requireBuilding(buildingId);
         try {
             FloorEntity floor = new FloorEntity(building, command.name(), command.level(), command.height());
-            return floorQueryService.toFloorResult(floorRepository.saveAndFlush(floor));
+            FloorEntity saved = floorRepository.saveAndFlush(floor);
+            floorAreaRepository.saveAndFlush(FloorAreaEntity.createDefault(saved));
+            return floorQueryService.toFloorResult(saved);
         } catch (DataIntegrityViolationException e) {
             throw new ClientApiException(HttpStatus.CONFLICT, "FLOOR_CONFLICT", "floor level already exists");
         }

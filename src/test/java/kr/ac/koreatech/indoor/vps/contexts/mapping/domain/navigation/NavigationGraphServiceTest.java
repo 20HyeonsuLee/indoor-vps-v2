@@ -127,7 +127,8 @@ class NavigationGraphServiceTest {
                 id("node-" + name),
                 NodeType.junction,
                 new Point3(x, y, z),
-                name
+                name,
+                null
         );
     }
 
