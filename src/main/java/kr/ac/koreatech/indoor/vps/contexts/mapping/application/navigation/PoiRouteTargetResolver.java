@@ -1,5 +1,6 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation;
 
+import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.PoiCanonicalEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.PoiCanonicalRepository;
@@ -16,14 +17,13 @@ public class PoiRouteTargetResolver {
         this.poiCanonicalRepository = poiCanonicalRepository;
     }
 
-    public PoiRouteTarget find(UUID buildingId, String destinationName) {
+    public Optional<PoiRouteTarget> find(UUID buildingId, String destinationName) {
         if (destinationName == null || destinationName.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         return poiCanonicalRepository.search(buildingId, "%" + destinationName.toLowerCase() + "%").stream()
                 .map(this::toTarget)
-                .findFirst()
-                .orElse(null);
+                .findFirst();
     }
 
     private PoiRouteTarget toTarget(PoiCanonicalEntity poi) {

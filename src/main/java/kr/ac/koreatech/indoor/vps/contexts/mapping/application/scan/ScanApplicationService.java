@@ -74,10 +74,7 @@ public class ScanApplicationService {
 
     public ScanStartResponse startStreamingScan(UUID floorId, ScanStartRequest request) {
         floorService.requireFloor(floorId);
-        UUID scanId = parseOptional(request == null ? null : request.scanId());
-        if (scanId == null) {
-            scanId = UUID.randomUUID();
-        }
+        UUID scanId = parseOptional(request == null ? null : request.scanId()).orElseGet(UUID::randomUUID);
         if (scanIngestRepository.existsById(scanId)) {
             throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
         }
@@ -157,7 +154,7 @@ public class ScanApplicationService {
             boolean force
     ) {
         FloorEntity floor = floorService.requireFloor(floorId);
-        UUID scanId = scanArchiveStorage.resolveScanId(upload, parseOptional(scanIdText));
+        UUID scanId = scanArchiveStorage.resolveScanId(upload, parseOptional(scanIdText).orElse(null));
         boolean existingScan = scanIngestRepository.existsById(scanId);
         if (existingScan && !force) {
             throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
@@ -317,7 +314,7 @@ public class ScanApplicationService {
                         firstNonBlank(
                                 job.getFailureReason() == null ? null : job.getFailureReason().name(),
                                 job.getFailureDetail()
-                        )
+                        ).orElse(null)
                 ))
                 .orElseGet(() -> new ProcessingStatusResponse(
                         floorId,
@@ -357,7 +354,7 @@ public class ScanApplicationService {
 
     private Map<String, Object> deviceInfoMap(String deviceInfo) {
         if (deviceInfo == null || deviceInfo.isBlank()) {
-            return null;
+            return Map.of();
         }
         try {
             return objectMapper.readValue(deviceInfo, new TypeReference<>() {
@@ -367,12 +364,12 @@ public class ScanApplicationService {
         }
     }
 
-    private UUID parseOptional(String value) {
+    private Optional<UUID> parseOptional(String value) {
         if (value == null || value.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return UUID.fromString(value);
+            return Optional.of(UUID.fromString(value));
         } catch (IllegalArgumentException e) {
             throw new ClientApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_SCAN_ID", "invalid scan_id");
         }
@@ -388,14 +385,14 @@ public class ScanApplicationService {
         return state.name().toUpperCase();
     }
 
-    private String firstNonBlank(String first, String second) {
+    private Optional<String> firstNonBlank(String first, String second) {
         if (first != null && !first.isBlank()) {
-            return first;
+            return Optional.of(first);
         }
         if (second != null && !second.isBlank()) {
-            return second;
+            return Optional.of(second);
         }
-        return null;
+        return Optional.empty();
     }
 
     private ClientApiException notFound(String code, String message) {

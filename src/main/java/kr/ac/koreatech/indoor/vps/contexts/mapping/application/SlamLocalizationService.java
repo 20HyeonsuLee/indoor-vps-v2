@@ -15,6 +15,7 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.PythonBrid
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -33,6 +34,7 @@ public class SlamLocalizationService {
         this.mapProvider = mapProvider;
     }
 
+    @Transactional(readOnly = true)
     public SLAMLocalizeResponse localize(
             List<MultipartFile> images,
             String buildingId,

@@ -3,6 +3,7 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.localization;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.LocalizationMapProvider;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.FloorMapBridgeRef;
@@ -11,10 +12,8 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class JpaLocalizationMapProvider implements LocalizationMapProvider {
     private final FloorScanRepository floorScanRepository;
@@ -30,12 +29,12 @@ public class JpaLocalizationMapProvider implements LocalizationMapProvider {
 
     @Override
     public List<FloorMapBridgeRef> activeFloorMaps(String buildingId) {
-        UUID buildingUuid = parseUuid(buildingId);
-        if (buildingUuid == null) {
+        Optional<UUID> buildingUuid = parseUuid(buildingId);
+        if (buildingUuid.isEmpty()) {
             return fallbackSingleMap(buildingId);
         }
 
-        List<FloorMapBridgeRef> maps = floorScanRepository.findActiveForBuilding(buildingUuid).stream()
+        List<FloorMapBridgeRef> maps = floorScanRepository.findActiveForBuilding(buildingUuid.get()).stream()
                 .map(this::toBridgeRef)
                 .toList();
         if (!maps.isEmpty()) {
@@ -76,11 +75,11 @@ public class JpaLocalizationMapProvider implements LocalizationMapProvider {
         return path.resolve("rtabmap.db");
     }
 
-    private UUID parseUuid(String value) {
+    private Optional<UUID> parseUuid(String value) {
         try {
-            return UUID.fromString(value);
+            return Optional.of(UUID.fromString(value));
         } catch (IllegalArgumentException e) {
-            return null;
+            return Optional.empty();
         }
     }
 }

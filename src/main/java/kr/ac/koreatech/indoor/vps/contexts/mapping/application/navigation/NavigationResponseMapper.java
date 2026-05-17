@@ -5,6 +5,7 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteEdge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteNode;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
@@ -92,19 +93,19 @@ public class NavigationResponseMapper {
         );
     }
 
-    public Map<String, Double> pathBounds(List<MapNodeEntity> nodes) {
+    public Optional<Map<String, Double>> pathBounds(List<MapNodeEntity> nodes) {
         if (nodes.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         Bounds bounds = computeBounds(nodes);
-        return Map.of(
+        return Optional.of(Map.of(
                 "minX", bounds.minX(),
                 "minY", bounds.minY(),
                 "maxX", bounds.maxX(),
                 "maxY", bounds.maxY(),
                 "widthM", bounds.maxX() - bounds.minX(),
                 "heightM", bounds.maxY() - bounds.minY()
-        );
+        ));
     }
 
     public Map<String, Object> metadata(Object... values) {

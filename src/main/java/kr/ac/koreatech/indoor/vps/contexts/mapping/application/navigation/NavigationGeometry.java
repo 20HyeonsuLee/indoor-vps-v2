@@ -20,10 +20,6 @@ final class NavigationGeometry {
         return Double.isNaN(coordinate.getZ()) ? 0.0 : coordinate.getZ();
     }
 
-    static int estimateSeconds(double distanceM) {
-        return (int) Math.ceil(distanceM / 1.2);
-    }
-
     static double distance(double ax, double ay, double az, double bx, double by, double bz) {
         double dx = ax - bx;
         double dy = ay - by;

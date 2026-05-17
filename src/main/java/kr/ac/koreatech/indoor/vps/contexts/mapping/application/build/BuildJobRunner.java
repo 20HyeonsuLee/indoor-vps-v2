@@ -88,10 +88,11 @@ public class BuildJobRunner {
 
     private void processClaimedJob(UUID buildJobId) {
         try {
-            JobInput input = transactionTemplate.execute(status -> jobInput(buildJobId));
-            if (input == null) {
+            Optional<JobInput> inputOpt = transactionTemplate.execute(status -> jobInput(buildJobId));
+            if (inputOpt == null || inputOpt.isEmpty()) {
                 return;
             }
+            JobInput input = inputOpt.get();
             if (!Files.exists(input.dbPath())) {
                 throw new BuildInputException("rtabmap.db not found at " + input.dbPath());
             }
@@ -111,15 +112,15 @@ public class BuildJobRunner {
         }
     }
 
-    private JobInput jobInput(UUID buildJobId) {
+    private Optional<JobInput> jobInput(UUID buildJobId) {
         BuildJobEntity job = buildJobRepository.findById(buildJobId).orElseThrow();
         if (job.getState() != BuildState.running) {
-            return null;
+            return Optional.empty();
         }
-        return new JobInput(
+        return Optional.of(new JobInput(
                 job.getScan().getScanId(),
                 rtabmapDbPath(job.getScan().getStoragePath())
-        );
+        ));
     }
 
     private void persistSuccess(

@@ -22,6 +22,10 @@ public class NavigationGraphService {
                 .orElse(null);
     }
 
+    public int estimateWalkingSeconds(double distanceM) {
+        return (int) Math.ceil(distanceM / 1.2);
+    }
+
     public RouteResult routeBetween(
             List<RouteNode> nodes,
             List<RouteEdge> edges,

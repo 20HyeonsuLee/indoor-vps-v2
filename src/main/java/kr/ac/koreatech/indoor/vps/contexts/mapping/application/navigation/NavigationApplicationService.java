@@ -80,7 +80,7 @@ public class NavigationApplicationService {
                 latestBuildJobId(scanId),
                 nodes.stream().map(responseMapper::nodeMap).toList(),
                 edges.stream().map(responseMapper::edgeMap).toList(),
-                responseMapper.pathBounds(nodes)
+                responseMapper.pathBounds(nodes).orElse(null)
         );
     }
 
@@ -115,8 +115,8 @@ public class NavigationApplicationService {
                 request.startZ(),
                 request.startFloorLevel()
         );
-        PoiRouteTarget target = targetResolver.find(buildingId, request.destinationName());
-        if (target == null) {
+        Optional<PoiRouteTarget> targetOpt = targetResolver.find(buildingId, request.destinationName());
+        if (targetOpt.isEmpty()) {
             return new PathfindingResponse(
                     buildingId,
                     0.0,
@@ -126,6 +126,7 @@ public class NavigationApplicationService {
                     responseMapper.metadata("destinationName", request.destinationName(), "destinationFound", false)
             );
         }
+        PoiRouteTarget target = targetOpt.get();
 
         List<PathStepResponse> steps = new ArrayList<>();
         steps.add(new PathStepResponse(1, request.startFloorLevel(), start, "Start", null));
@@ -159,7 +160,7 @@ public class NavigationApplicationService {
                     return new PathfindingResponse(
                             buildingId,
                             route.totalDistance(),
-                            NavigationGeometry.estimateSeconds(route.totalDistance()),
+                            graphService.estimateWalkingSeconds(route.totalDistance()),
                             steps,
                             List.of(),
                             responseMapper.metadata("destinationName", request.destinationName(), "destinationFound", true)
@@ -181,7 +182,7 @@ public class NavigationApplicationService {
         return new PathfindingResponse(
                 buildingId,
                 distance,
-                NavigationGeometry.estimateSeconds(distance),
+                graphService.estimateWalkingSeconds(distance),
                 steps,
                 List.of(),
                 responseMapper.metadata("destinationName", request.destinationName(), "destinationFound", true)
