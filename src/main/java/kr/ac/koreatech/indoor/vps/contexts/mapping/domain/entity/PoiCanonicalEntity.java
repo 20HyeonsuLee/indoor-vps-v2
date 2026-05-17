@@ -7,7 +7,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.Point;
 
 @Entity
@@ -44,6 +48,13 @@ public class PoiCanonicalEntity {
     @Column(name = "route_node_id")
     private UUID routeNodeId;
 
+    @Column(name = "level_id")
+    private String levelId;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "source_mark_ids", columnDefinition = "jsonb")
+    private List<Long> sourceMarkIds;
+
     @Column(name = "needs_review", nullable = false)
     private boolean needsReview;
 
@@ -51,6 +62,34 @@ public class PoiCanonicalEntity {
     private Double llmConfidence;
 
     protected PoiCanonicalEntity() {
+    }
+
+    public static PoiCanonicalEntity createFromMark(
+            UUID canonicalId,
+            UUID scanId,
+            BuildingEntity building,
+            FloorEntity floor,
+            String levelId,
+            String label,
+            String category,
+            Point worldPose,
+            UUID routeNodeId,
+            List<Long> sourceMarkIds
+    ) {
+        PoiCanonicalEntity entity = new PoiCanonicalEntity();
+        entity.canonicalId = canonicalId;
+        entity.scanId = scanId;
+        entity.building = building;
+        entity.floor = floor;
+        entity.levelId = levelId;
+        entity.label = label;
+        entity.name = label;
+        entity.category = category;
+        entity.worldPose = worldPose;
+        entity.routeNodeId = routeNodeId;
+        entity.sourceMarkIds = sourceMarkIds;
+        entity.needsReview = false;
+        return entity;
     }
 
     public UUID getCanonicalId() {
@@ -91,6 +130,14 @@ public class PoiCanonicalEntity {
 
     public boolean isNeedsReview() {
         return needsReview;
+    }
+
+    public String getLevelId() {
+        return levelId;
+    }
+
+    public List<Long> getSourceMarkIds() {
+        return sourceMarkIds;
     }
 
     public Double getLlmConfidence() {

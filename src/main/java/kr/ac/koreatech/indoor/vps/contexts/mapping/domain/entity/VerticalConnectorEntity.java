@@ -39,6 +39,24 @@ public class VerticalConnectorEntity {
     protected VerticalConnectorEntity() {
     }
 
+    public static VerticalConnectorEntity create(
+            UUID connectorId,
+            BuildingEntity building,
+            String connectorType,
+            String connectorKey,
+            String name
+    ) {
+        VerticalConnectorEntity entity = new VerticalConnectorEntity();
+        entity.connectorId = connectorId;
+        entity.building = building;
+        entity.connectorType = connectorType;
+        entity.connectorKey = connectorKey;
+        entity.name = name;
+        entity.mock = false;
+        entity.createdAt = Instant.now();
+        return entity;
+    }
+
     public UUID getConnectorId() {
         return connectorId;
     }

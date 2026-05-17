@@ -6,6 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.Map;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.NodeType;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -34,6 +35,10 @@ public class MapNodeEntity {
     private Point geom;
 
     private String label;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "source_ref", columnDefinition = "jsonb")
+    private Map<String, Object> sourceRef;
 
     @Column(name = "is_stale", nullable = false)
     private boolean stale;
@@ -82,5 +87,14 @@ public class MapNodeEntity {
 
     public String getLabel() {
         return label;
+    }
+
+    public Map<String, Object> getSourceRef() {
+        return sourceRef;
+    }
+
+    public void changeNodeType(NodeType nodeType, Map<String, Object> sourceRef) {
+        this.nodeType = nodeType;
+        this.sourceRef = sourceRef;
     }
 }

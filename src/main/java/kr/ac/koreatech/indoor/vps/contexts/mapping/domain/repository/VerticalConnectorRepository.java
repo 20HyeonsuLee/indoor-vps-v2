@@ -9,6 +9,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface VerticalConnectorRepository extends JpaRepository<VerticalConnectorEntity, UUID> {
 
+    java.util.Optional<VerticalConnectorEntity> findByBuilding_BuildingIdAndConnectorTypeAndConnectorKey(
+            UUID buildingId, String connectorType, String connectorKey);
+
+
     @Query(value = """
             SELECT
                 vc.connector_id                                      AS passageId,

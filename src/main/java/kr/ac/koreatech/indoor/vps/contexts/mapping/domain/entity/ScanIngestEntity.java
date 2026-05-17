@@ -99,4 +99,20 @@ public class ScanIngestEntity {
     public void attachBuildJob(UUID buildJobId) {
         this.buildJobId = buildJobId;
     }
+
+    public Map<String, Object> getDeviceInfo() {
+        return deviceInfo;
+    }
+
+    public void mergeDeviceInfo(Map<String, Object> additional) {
+        if (additional == null || additional.isEmpty()) {
+            return;
+        }
+        Map<String, Object> merged = new java.util.LinkedHashMap<>();
+        if (this.deviceInfo != null) {
+            merged.putAll(this.deviceInfo);
+        }
+        merged.putAll(additional);
+        this.deviceInfo = merged;
+    }
 }

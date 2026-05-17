@@ -17,6 +17,8 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestR
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanMetadataReader;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanMetadataReader.ScanMetadata;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,7 @@ public class BuildJobRunner {
     private final ScanIngestRepository scanIngestRepository;
     private final RtabmapGraphReader graphReader;
     private final RtabmapReprocessor reprocessService;
+    private final ScanMetadataReader metadataReader;
     private final IndoorProperties properties;
     private final TransactionTemplate transactionTemplate;
     private final BuildGraphPersister graphPersister;
@@ -39,6 +42,7 @@ public class BuildJobRunner {
             ScanIngestRepository scanIngestRepository,
             RtabmapGraphReader graphReader,
             RtabmapReprocessor reprocessService,
+            ScanMetadataReader metadataReader,
             IndoorProperties properties,
             TransactionTemplate transactionTemplate,
             BuildGraphPersister graphPersister
@@ -47,6 +51,7 @@ public class BuildJobRunner {
         this.scanIngestRepository = scanIngestRepository;
         this.graphReader = graphReader;
         this.reprocessService = reprocessService;
+        this.metadataReader = metadataReader;
         this.properties = properties;
         this.transactionTemplate = transactionTemplate;
         this.graphPersister = graphPersister;
@@ -96,8 +101,9 @@ public class BuildJobRunner {
             if (graph.nodes().isEmpty()) {
                 throw new BuildInputException("rtabmap graph has no nodes");
             }
+            Optional<ScanMetadata> metadata = metadataReader.read(metadataDbPath(input.dbPath()));
             transactionTemplate.executeWithoutResult(
-                    status -> graphPersister.persistSuccess(buildJobId, input.scanId(), input.dbPath(), graph, reprocess)
+                    status -> graphPersister.persistSuccess(buildJobId, input.scanId(), input.dbPath(), graph, reprocess, metadata)
             );
         } catch (BuildInputException | RtabmapGraphReadException e) {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
@@ -157,6 +163,10 @@ public class BuildJobRunner {
             return path.getParent().resolve("rtabmap.db");
         }
         return path.resolve("rtabmap.db");
+    }
+
+    private Path metadataDbPath(Path rtabmapDbPath) {
+        return rtabmapDbPath.resolveSibling("scan_metadata.db");
     }
 
     private static class BuildInputException extends RuntimeException {
