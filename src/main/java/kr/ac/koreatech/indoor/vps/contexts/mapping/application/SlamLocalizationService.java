@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand.ImagePayload;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.SLAMLocalizeResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.FloorMapBridgeRef;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
@@ -15,7 +17,6 @@ import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class SlamLocalizationService {
@@ -34,15 +35,11 @@ public class SlamLocalizationService {
     }
 
     @Transactional(readOnly = true)
-    public SLAMLocalizeResult localize(
-            List<MultipartFile> images,
-            String buildingId,
-            String mapId
-    ) {
-        if (images == null || images.isEmpty()) {
+    public SLAMLocalizeResult localize(LocalizeCommand command) {
+        if (command.images() == null || command.images().isEmpty()) {
             throw new ClientApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "At least one image file is required");
         }
-        String resolvedBuildingId = buildingId != null ? buildingId : mapId;
+        String resolvedBuildingId = command.buildingId() != null ? command.buildingId() : command.mapId();
         if (resolvedBuildingId == null || resolvedBuildingId.isBlank()) {
             throw new ClientApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "building_id or map_id is required");
         }
@@ -57,11 +54,11 @@ public class SlamLocalizationService {
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("indoor-localize-");
-            for (int i = 0; i < images.size(); i++) {
-                MultipartFile image = images.get(i);
+            for (int i = 0; i < command.images().size(); i++) {
+                ImagePayload image = command.images().get(i);
                 validateImage(image, i);
-                Path file = tempDir.resolve("%02d-%s".formatted(i, safeName(image.getOriginalFilename())));
-                image.transferTo(file);
+                Path file = tempDir.resolve("%02d-%s".formatted(i, safeName(image.originalFilename())));
+                Files.write(file, image.content());
                 tempFiles.add(file);
             }
             LocalizeBridgeResponse response = bridge.localize(new LocalizeBridgeRequest(
@@ -97,8 +94,8 @@ public class SlamLocalizationService {
         }
     }
 
-    private void validateImage(MultipartFile image, int index) {
-        String contentType = image.getContentType();
+    private void validateImage(ImagePayload image, int index) {
+        String contentType = image.contentType();
         boolean accepted = contentType == null
                 || contentType.startsWith("image/")
                 || contentType.equals("application/octet-stream");
@@ -109,7 +106,7 @@ public class SlamLocalizationService {
                     "File %d must be an image, got %s".formatted(index + 1, contentType)
             );
         }
-        if (image.isEmpty()) {
+        if (image.content() == null || image.content().length == 0) {
             throw new ClientApiException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "VALIDATION_ERROR",

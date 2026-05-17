@@ -3,6 +3,7 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controlle
 import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.ScanDtos.*;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.FinalizeStreamingScanUseCase;
@@ -13,9 +14,13 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ProcessFloor
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ProcessingStatusResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.PushStreamingFramesUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ScanChunkResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.FinalizeStreamingScanCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ScanFinalizeResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.StartStreamingScanCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.StartStreamingScanUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.UploadScanChunkCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.UploadScanChunkUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.FilePayload;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.ScanFramesRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StartedStreamingScan;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StreamingFrameStats;
@@ -85,7 +90,10 @@ public class ScanController {
         }
         CaptureRecord capture = fixtureCapture.captureScanChunk(floorId, upload, scanId, deviceInfo, force);
         try {
-            ScanChunkResult response = uploadScanChunkUseCase.execute(floorId, upload, scanId, deviceInfo, force);
+            byte[] content = readBytes(upload);
+            ScanChunkResult response = uploadScanChunkUseCase.execute(
+                    new UploadScanChunkCommand(floorId, content, upload.getOriginalFilename(), scanId, deviceInfo, force)
+            );
             fixtureCapture.writeResponse(capture, response);
             return response;
         } catch (RuntimeException e) {
@@ -100,11 +108,11 @@ public class ScanController {
             @PathVariable UUID floorId,
             @RequestBody(required = false) ScanStartRequest request
     ) {
-        StartedStreamingScan started = startStreamingScanUseCase.execute(
+        StartedStreamingScan started = startStreamingScanUseCase.execute(new StartStreamingScanCommand(
                 floorId,
                 request == null ? null : request.scanId(),
                 request == null ? null : request.deviceInfo()
-        );
+        ));
         return new ScanStartResponse(started.scanId(), started.floorId(), started.storagePath(), started.state());
     }
 
@@ -131,7 +139,9 @@ public class ScanController {
             @RequestParam("manifest") MultipartFile manifest,
             @RequestParam("metadata") MultipartFile metadata
     ) {
-        return finalizeStreamingScanUseCase.execute(scanId, manifest, metadata);
+        return finalizeStreamingScanUseCase.execute(
+                new FinalizeStreamingScanCommand(scanId, toFilePayload(manifest), toFilePayload(metadata))
+        );
     }
 
     @GetMapping("/floors/{floorId}/scans/chunks")
@@ -168,5 +178,20 @@ public class ScanController {
     @GetMapping("/floors/{floorId}/process/status")
     public ProcessingStatusResult getProcessStatus(@PathVariable UUID floorId) {
         return processFloorUseCase.processStatus(floorId);
+    }
+
+    private static FilePayload toFilePayload(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return new FilePayload(new byte[0], null);
+        }
+        return new FilePayload(readBytes(file), file.getOriginalFilename());
+    }
+
+    private static byte[] readBytes(MultipartFile file) {
+        try {
+            return file.getBytes();
+        } catch (IOException e) {
+            throw new ClientApiException(HttpStatus.BAD_REQUEST, "FILE_READ_FAILED", e.getMessage());
+        }
     }
 }

@@ -11,15 +11,12 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryS
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage.StoredScanArchive;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Transactional(readOnly = true)
@@ -27,70 +24,49 @@ import org.springframework.web.multipart.MultipartFile;
 public class UploadScanChunkUseCase {
 
     private final FloorQueryService floorService;
-    private final ScanIngestRepository scanIngestRepository;
-    private final FloorScanRepository floorScanRepository;
     private final ScanArchiveStorage scanArchiveStorage;
-    private final ObjectMapper objectMapper;
+    private final ScanPersistence scanPersistence;
 
     public UploadScanChunkUseCase(
             FloorQueryService floorService,
-            ScanIngestRepository scanIngestRepository,
-            FloorScanRepository floorScanRepository,
             ScanArchiveStorage scanArchiveStorage,
-            ObjectMapper objectMapper
+            ScanPersistence scanPersistence
     ) {
         this.floorService = floorService;
-        this.scanIngestRepository = scanIngestRepository;
-        this.floorScanRepository = floorScanRepository;
         this.scanArchiveStorage = scanArchiveStorage;
-        this.objectMapper = objectMapper;
+        this.scanPersistence = scanPersistence;
     }
 
     @Transactional
-    public ScanChunkResult execute(
-            UUID floorId,
-            MultipartFile upload,
-            String scanIdText,
-            String deviceInfo,
-            boolean force
-    ) {
-        FloorEntity floor = floorService.requireFloor(floorId);
-        UUID scanId = scanArchiveStorage.resolveScanId(upload, parseOptional(scanIdText).orElse(null));
-        boolean existingScan = scanIngestRepository.existsById(scanId);
-        if (existingScan && !force) {
+    public ScanChunkResult execute(UploadScanChunkCommand command) {
+        FloorEntity floor = floorService.requireFloor(command.floorId());
+        UUID scanId = scanArchiveStorage.resolveScanId(
+                command.fileContent(), command.originalFilename(),
+                parseOptional(command.scanIdText()).orElse(null)
+        );
+        boolean existingScan = scanPersistence.scanExists(scanId);
+        if (existingScan && !command.force()) {
             throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
         }
-        StoredScanArchive stored = scanArchiveStorage.store(scanId, upload, force);
+        StoredScanArchive stored = scanArchiveStorage.store(scanId, command.fileContent(), command.originalFilename(), command.force());
 
         try {
-            ScanIngestEntity scan = scanIngestRepository.findById(scanId)
+            ScanIngestEntity scan = scanPersistence.findScan(scanId)
                     .map(existing -> {
-                        existing.replacePayload(stored.sha256(), stored.storagePath(), deviceInfoMap(deviceInfo));
+                        existing.replacePayload(stored.sha256(), stored.storagePath(), deviceInfoMap(command.deviceInfo()));
                         return existing;
                     })
                     .orElseGet(() -> new ScanIngestEntity(
                             scanId,
                             stored.sha256(),
                             stored.storagePath(),
-                            deviceInfoMap(deviceInfo)
+                            deviceInfoMap(command.deviceInfo())
                     ));
-            ScanIngestEntity persistedScan = scanIngestRepository.saveAndFlush(scan);
-
-            floorScanRepository.deactivateForFloor(floorId);
-            floorScanRepository.flush();
-
-            FloorScanEntity floorScan = floorScanRepository
-                    .findByFloor_FloorIdAndScan_ScanId(floorId, scanId)
-                    .orElseGet(() -> new FloorScanEntity(
-                            floor,
-                            persistedScan,
-                            stored.fileName(),
-                            stored.size(),
-                            floorScanRepository.nextUploadOrder(floorId)
-                    ));
-            floorScan.updateStoredFile(stored.fileName(), stored.size(), "UPLOADED");
-            floorScan.changeActive(true);
-            floorScan = floorScanRepository.saveAndFlush(floorScan);
+            ScanIngestEntity persistedScan = scanPersistence.saveScan(scan);
+            FloorScanEntity floorScan = scanPersistence.saveFloorScanActive(
+                    command.floorId(), floor, persistedScan,
+                    stored.fileName(), stored.size(), "UPLOADED"
+            );
             return toScanChunkResult(floorScan);
         } catch (RuntimeException e) {
             if (!existingScan) {
@@ -130,7 +106,7 @@ public class UploadScanChunkUseCase {
             return Map.of();
         }
         try {
-            return objectMapper.readValue(deviceInfo, new TypeReference<>() {
+            return new ObjectMapper().readValue(deviceInfo, new TypeReference<>() {
             });
         } catch (JsonProcessingException ignored) {
             return Map.of("raw", deviceInfo);

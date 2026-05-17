@@ -8,8 +8,6 @@ import java.util.Map;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFloorMapUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFloorMapUseCase.FloorMapResult;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetGraphUseCase;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetGraphUseCase.FloorPathResult;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,31 +21,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 @Tag(name = "지도 데이터")
 public class FloorMapController {
-    private final GetGraphUseCase getGraphUseCase;
     private final GetFloorMapUseCase getFloorMapUseCase;
-    private final NavigationResponseMapper responseMapper;
+    private final FloorMapResponseMapper floorMapMapper;
 
     public FloorMapController(
-            GetGraphUseCase getGraphUseCase,
             GetFloorMapUseCase getFloorMapUseCase,
-            NavigationResponseMapper responseMapper
+            FloorMapResponseMapper floorMapMapper
     ) {
-        this.getGraphUseCase = getGraphUseCase;
         this.getFloorMapUseCase = getFloorMapUseCase;
-        this.responseMapper = responseMapper;
-    }
-
-    @GetMapping("/floors/{floorId}/path")
-    public FloorPathResponse getFloorPath(@PathVariable UUID floorId) {
-        FloorPathResult result = getGraphUseCase.getFloorPath(floorId);
-        return new FloorPathResponse(
-                result.floorId(),
-                result.scanId(),
-                result.buildJobId(),
-                result.nodes().stream().map(responseMapper::nodeMap).toList(),
-                result.edges().stream().map(responseMapper::edgeMap).toList(),
-                responseMapper.pathBounds(result.nodes()).orElse(null)
-        );
+        this.floorMapMapper = floorMapMapper;
     }
 
     @GetMapping("/floors/{floorId}/map")
@@ -70,10 +52,10 @@ public class FloorMapController {
                 result.floor().getName(),
                 result.buildJobId(),
                 FloorMapCoordinateSystem.worldMeters(),
-                responseMapper.floorMapBounds(result.nodes()),
+                floorMapMapper.floorMapBounds(result.nodes()),
                 Map.of("type", "FeatureCollection", "features", List.of()),
-                result.nodes().stream().map(responseMapper::floorMapNode).toList(),
-                result.edges().stream().map(responseMapper::floorMapEdge).toList(),
+                result.nodes().stream().map(floorMapMapper::floorMapNode).toList(),
+                result.edges().stream().map(floorMapMapper::floorMapEdge).toList(),
                 result.etag()
         );
         return ResponseEntity.ok()

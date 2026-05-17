@@ -2,13 +2,12 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port;
 
 import java.nio.file.Path;
 import java.util.UUID;
-import org.springframework.web.multipart.MultipartFile;
 
 public interface ScanArchiveStorage {
 
-    UUID resolveScanId(MultipartFile upload, UUID requestedScanId);
+    UUID resolveScanId(byte[] content, String originalFilename, UUID requestedScanId);
 
-    StoredScanArchive store(UUID scanId, MultipartFile upload, boolean force);
+    StoredScanArchive store(UUID scanId, byte[] content, String originalFilename, boolean force);
 
     void deleteScan(UUID scanId);
 

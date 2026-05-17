@@ -3,16 +3,12 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.FinalizedStreamingScan;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Transactional(readOnly = true)
@@ -20,27 +16,25 @@ import org.springframework.web.multipart.MultipartFile;
 public class FinalizeStreamingScanUseCase {
 
     private final FloorQueryService floorService;
-    private final ScanIngestRepository scanIngestRepository;
-    private final FloorScanRepository floorScanRepository;
+    private final ScanPersistence scanPersistence;
     private final StreamingScanStorage streamingScanStorage;
 
     public FinalizeStreamingScanUseCase(
             FloorQueryService floorService,
-            ScanIngestRepository scanIngestRepository,
-            FloorScanRepository floorScanRepository,
+            ScanPersistence scanPersistence,
             StreamingScanStorage streamingScanStorage
     ) {
         this.floorService = floorService;
-        this.scanIngestRepository = scanIngestRepository;
-        this.floorScanRepository = floorScanRepository;
+        this.scanPersistence = scanPersistence;
         this.streamingScanStorage = streamingScanStorage;
     }
 
     @Transactional
-    public ScanFinalizeResult execute(UUID scanId, MultipartFile manifest, MultipartFile metadata) {
-        FinalizedStreamingScan finalized = streamingScanStorage.finalizeScan(scanId, manifest, metadata);
+    public ScanFinalizeResult execute(FinalizeStreamingScanCommand command) {
+        UUID scanId = command.scanId();
+        FinalizedStreamingScan finalized = streamingScanStorage.finalizeScan(scanId, command.manifest(), command.metadata());
         FloorEntity floor = floorService.requireFloor(finalized.floorId());
-        ScanIngestEntity scan = scanIngestRepository.findById(scanId)
+        ScanIngestEntity scan = scanPersistence.findScan(scanId)
                 .map(existing -> {
                     existing.replacePayload(finalized.payloadSha256(), finalized.storagePath(), finalized.deviceInfo());
                     return existing;
@@ -51,23 +45,12 @@ public class FinalizeStreamingScanUseCase {
                         finalized.storagePath(),
                         finalized.deviceInfo()
                 ));
-        ScanIngestEntity persistedScan = scanIngestRepository.saveAndFlush(scan);
-
-        floorScanRepository.deactivateForFloor(finalized.floorId());
-        floorScanRepository.flush();
+        ScanIngestEntity persistedScan = scanPersistence.saveScan(scan);
         String fileName = ScanNaming.streamingScanFileName(scanId);
-        FloorScanEntity floorScan = floorScanRepository
-                .findByFloor_FloorIdAndScan_ScanId(finalized.floorId(), scanId)
-                .orElseGet(() -> new FloorScanEntity(
-                        floor,
-                        persistedScan,
-                        fileName,
-                        finalized.fileSize(),
-                        floorScanRepository.nextUploadOrder(finalized.floorId())
-                ));
-        floorScan.updateStoredFile(fileName, finalized.fileSize(), "READY");
-        floorScan.changeActive(true);
-        floorScanRepository.saveAndFlush(floorScan);
+        scanPersistence.saveFloorScanActive(
+                finalized.floorId(), floor, persistedScan,
+                fileName, finalized.fileSize(), "READY"
+        );
         return new ScanFinalizeResult(
                 scanId,
                 finalized.floorId(),

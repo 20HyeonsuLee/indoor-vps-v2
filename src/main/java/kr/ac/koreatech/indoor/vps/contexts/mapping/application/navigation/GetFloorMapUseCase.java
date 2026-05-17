@@ -18,20 +18,20 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class GetFloorMapUseCase {
     private final FloorQueryService floorQuery;
-    private final GetGraphUseCase getGraphUseCase;
+    private final GraphQueryFacade graphQueryFacade;
 
-    public GetFloorMapUseCase(FloorQueryService floorQuery, GetGraphUseCase getGraphUseCase) {
+    public GetFloorMapUseCase(FloorQueryService floorQuery, GraphQueryFacade graphQueryFacade) {
         this.floorQuery = floorQuery;
-        this.getGraphUseCase = getGraphUseCase;
+        this.graphQueryFacade = graphQueryFacade;
     }
 
     public FloorMapResult getFloorMap(UUID floorId) {
         FloorEntity floor = floorQuery.requireFloor(floorId);
         Optional<FloorScanEntity> active = floorQuery.activeScan(floorId);
         UUID scanId = active.map(scan -> scan.getScan().getScanId()).orElse(null);
-        UUID buildJobId = scanId == null ? null : getGraphUseCase.latestBuildJobId(scanId);
-        List<MapNodeEntity> nodes = scanId == null ? List.of() : getGraphUseCase.nodes(scanId);
-        List<MapEdgeEntity> edges = scanId == null ? List.of() : getGraphUseCase.edges(scanId);
+        UUID buildJobId = scanId == null ? null : graphQueryFacade.latestBuildJobId(scanId).orElse(null);
+        List<MapNodeEntity> nodes = scanId == null ? List.of() : graphQueryFacade.nodeEntities(scanId);
+        List<MapEdgeEntity> edges = scanId == null ? List.of() : graphQueryFacade.edgeEntities(scanId);
         String etag = etagFor(floor.getFloorId(), scanId, buildJobId, nodes.size(), edges.size());
         return new FloorMapResult(floor, scanId, buildJobId, nodes, edges, etag);
     }

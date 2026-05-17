@@ -4,14 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingQueryService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.PathStep;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.RoutePosition;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PoiRouteTargetResolver.PoiRouteTarget;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapNodeEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.NavigationGraphService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.Point3;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteEdge;
@@ -25,38 +21,29 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class PlanRouteUseCase {
-    private final BuildingQueryService buildingQuery;
-    private final FloorQueryService floorQuery;
+    private final NavigationQueryContext queryContext;
     private final NavigationGraphService graphService;
-    private final RouteGraphMapper graphMapper;
-    private final PoiRouteTargetResolver targetResolver;
-    private final GetGraphUseCase getGraphUseCase;
+    private final GraphQueryFacade graphQueryFacade;
 
     public PlanRouteUseCase(
-            BuildingQueryService buildingQuery,
-            FloorQueryService floorQuery,
+            NavigationQueryContext queryContext,
             NavigationGraphService graphService,
-            RouteGraphMapper graphMapper,
-            PoiRouteTargetResolver targetResolver,
-            GetGraphUseCase getGraphUseCase
+            GraphQueryFacade graphQueryFacade
     ) {
-        this.buildingQuery = buildingQuery;
-        this.floorQuery = floorQuery;
+        this.queryContext = queryContext;
         this.graphService = graphService;
-        this.graphMapper = graphMapper;
-        this.targetResolver = targetResolver;
-        this.getGraphUseCase = getGraphUseCase;
+        this.graphQueryFacade = graphQueryFacade;
     }
 
     public PathfindingResult pathfinding(UUID buildingId, PathfindingCommand command) {
-        buildingQuery.requireBuilding(buildingId);
+        queryContext.requireBuilding(buildingId);
         RoutePosition start = new RoutePosition(
                 command.startX(),
                 command.startY(),
                 command.startZ(),
                 command.startFloorLevel()
         );
-        Optional<PoiRouteTarget> targetOpt = targetResolver.find(buildingId, command.destinationName());
+        Optional<PoiRouteTarget> targetOpt = queryContext.findTarget(buildingId, command.destinationName());
         if (targetOpt.isEmpty()) {
             return new PathfindingResult(
                     buildingId,
@@ -72,10 +59,8 @@ public class PlanRouteUseCase {
         List<PathStep> steps = new ArrayList<>();
         steps.add(new PathStep(1, command.startFloorLevel(), start, "Start", null));
         if (command.startScanId() != null && target.routeNodeId() != null) {
-            List<MapNodeEntity> nodes = getGraphUseCase.nodes(command.startScanId());
-            List<MapEdgeEntity> edges = getGraphUseCase.edges(command.startScanId());
-            List<RouteNode> routeNodes = graphMapper.toRouteNodes(nodes);
-            List<RouteEdge> routeEdges = graphMapper.toRouteEdges(edges);
+            List<RouteNode> routeNodes = graphQueryFacade.routeNodes(command.startScanId());
+            List<RouteEdge> routeEdges = graphQueryFacade.routeEdges(command.startScanId());
             UUID nearestNode = graphService.nearestNode(
                     routeNodes,
                     new Point3(command.startX(), command.startY(), command.startZ())
@@ -126,21 +111,21 @@ public class PlanRouteUseCase {
         );
     }
 
-    public FloorRouteResult floorRoute(UUID floorId, UUID fromNode, UUID toNode) {
-        floorQuery.requireFloor(floorId);
-        Optional<FloorScanEntity> active = floorQuery.activeScan(floorId);
+    public FloorRouteResult floorRoute(FloorRouteCommand command) {
+        queryContext.requireFloor(command.floorId());
+        Optional<FloorScanEntity> active = queryContext.activeScan(command.floorId());
         if (active.isEmpty()) {
-            return new FloorRouteResult(floorId, null, fromNode, toNode, 0.0, List.of(), List.of());
+            return new FloorRouteResult(command.floorId(), null, command.fromNode(), command.toNode(), 0.0, List.of(), List.of());
         }
         UUID scanId = active.get().getScan().getScanId();
-        List<MapNodeEntity> nodeEntities = getGraphUseCase.nodes(scanId);
+        List<RouteNode> routeNodes = graphQueryFacade.routeNodes(scanId);
         RouteResult route = graphService.routeBetween(
-                graphMapper.toRouteNodes(nodeEntities),
-                graphMapper.toRouteEdges(getGraphUseCase.edges(scanId)),
-                fromNode,
-                toNode
+                routeNodes,
+                graphQueryFacade.routeEdges(scanId),
+                command.fromNode(),
+                command.toNode()
         );
-        return new FloorRouteResult(floorId, scanId, fromNode, toNode,
+        return new FloorRouteResult(command.floorId(), scanId, command.fromNode(), command.toNode(),
                 route.totalDistance(), route.nodes(), route.edges());
     }
 

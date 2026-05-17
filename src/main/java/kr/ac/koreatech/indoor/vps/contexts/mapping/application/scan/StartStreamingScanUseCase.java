@@ -8,7 +8,6 @@ import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StartedStreamingScan;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,29 +21,26 @@ import org.springframework.transaction.annotation.Transactional;
 public class StartStreamingScanUseCase {
 
     private final FloorQueryService floorService;
-    private final ScanIngestRepository scanIngestRepository;
+    private final ScanPersistence scanPersistence;
     private final StreamingScanStorage streamingScanStorage;
-    private final ObjectMapper objectMapper;
 
     public StartStreamingScanUseCase(
             FloorQueryService floorService,
-            ScanIngestRepository scanIngestRepository,
-            StreamingScanStorage streamingScanStorage,
-            ObjectMapper objectMapper
+            ScanPersistence scanPersistence,
+            StreamingScanStorage streamingScanStorage
     ) {
         this.floorService = floorService;
-        this.scanIngestRepository = scanIngestRepository;
+        this.scanPersistence = scanPersistence;
         this.streamingScanStorage = streamingScanStorage;
-        this.objectMapper = objectMapper;
     }
 
-    public StartedStreamingScan execute(UUID floorId, String scanIdText, String deviceInfo) {
-        floorService.requireFloor(floorId);
-        UUID scanId = parseOptional(scanIdText).orElseGet(UUID::randomUUID);
-        if (scanIngestRepository.existsById(scanId)) {
+    public StartedStreamingScan execute(StartStreamingScanCommand command) {
+        floorService.requireFloor(command.floorId());
+        UUID scanId = parseOptional(command.scanIdText()).orElseGet(UUID::randomUUID);
+        if (scanPersistence.scanExists(scanId)) {
             throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
         }
-        return streamingScanStorage.start(floorId, scanId, deviceInfoMap(deviceInfo));
+        return streamingScanStorage.start(command.floorId(), scanId, deviceInfoMap(command.deviceInfo()));
     }
 
     private Optional<UUID> parseOptional(String value) {
@@ -63,7 +59,7 @@ public class StartStreamingScanUseCase {
             return Map.of();
         }
         try {
-            return objectMapper.readValue(deviceInfo, new TypeReference<>() {
+            return new ObjectMapper().readValue(deviceInfo, new TypeReference<>() {
             });
         } catch (JsonProcessingException ignored) {
             return Map.of("raw", deviceInfo);

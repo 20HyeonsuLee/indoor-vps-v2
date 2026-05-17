@@ -22,7 +22,6 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.storage.ScanFi
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
@@ -110,15 +109,15 @@ public class StreamingScanStorageAdapter implements StreamingScanStorage {
     }
 
     @Override
-    public FinalizedStreamingScan finalizeScan(UUID scanId, MultipartFile manifest, MultipartFile metadata) {
+    public FinalizedStreamingScan finalizeScan(UUID scanId, FilePayload manifest, FilePayload metadata) {
         StreamingState state = requireState(scanId);
-        requireFile(manifest, "MANIFEST_REQUIRED", "manifest is required");
-        requireFile(metadata, "METADATA_REQUIRED", "metadata is required");
+        requirePayload(manifest, "MANIFEST_REQUIRED", "manifest is required");
+        requirePayload(metadata, "METADATA_REQUIRED", "metadata is required");
         Path root = scanRoot(scanId);
         try {
             Files.createDirectories(root);
-            fileIo.copy(manifest, root.resolve("manifest.json"));
-            fileIo.copy(metadata, root.resolve("scan_metadata.db"));
+            fileIo.copy(manifest.content(), root.resolve("manifest.json"));
+            fileIo.copy(metadata.content(), root.resolve("scan_metadata.db"));
             RtabmapDbInitializer.checkpoint(rtabmapDbPath(scanId));
             StoredFile rtabmapFile = fileIo.hashFile(rtabmapDbPath(scanId));
 
@@ -160,8 +159,8 @@ public class StreamingScanStorageAdapter implements StreamingScanStorage {
         }
     }
 
-    private void requireFile(MultipartFile file, String code, String message) {
-        if (file == null || file.isEmpty()) {
+    private void requirePayload(FilePayload payload, String code, String message) {
+        if (payload == null || payload.content() == null || payload.content().length == 0) {
             throw new ClientApiException(HttpStatus.BAD_REQUEST, code, message);
         }
     }

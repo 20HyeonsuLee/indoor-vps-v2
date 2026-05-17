@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.FloorRouteCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.PathStep;
@@ -25,9 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "길찾기")
 public class NavigationController {
     private final PlanRouteUseCase planRouteUseCase;
-    private final NavigationResponseMapper responseMapper;
+    private final RouteResponseMapper responseMapper;
 
-    public NavigationController(PlanRouteUseCase planRouteUseCase, NavigationResponseMapper responseMapper) {
+    public NavigationController(PlanRouteUseCase planRouteUseCase, RouteResponseMapper responseMapper) {
         this.planRouteUseCase = planRouteUseCase;
         this.responseMapper = responseMapper;
     }
@@ -38,7 +39,7 @@ public class NavigationController {
             @RequestParam(name = "from") UUID fromNode,
             @RequestParam(name = "to") UUID toNode
     ) {
-        FloorRouteResult result = planRouteUseCase.floorRoute(floorId, fromNode, toNode);
+        FloorRouteResult result = planRouteUseCase.floorRoute(new FloorRouteCommand(floorId, fromNode, toNode));
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("floorId", result.floorId());
         response.put("scanId", result.scanId());

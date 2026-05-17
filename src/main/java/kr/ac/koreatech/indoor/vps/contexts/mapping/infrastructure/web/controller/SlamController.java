@@ -3,12 +3,16 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controlle
 import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.SlamDtos.*;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.SlamLocalizationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand.ImagePayload;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.SLAMLocalizeResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture.FixtureCaptureService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture.FixtureCaptureService.CaptureRecord;
+import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,13 +39,32 @@ public class SlamController {
     ) {
         CaptureRecord capture = fixtureCapture.captureLocalizeImages(images, buildingId, mapId);
         try {
-            SLAMLocalizeResult result = localizationService.localize(images, buildingId, mapId);
+            LocalizeCommand command = new LocalizeCommand(toImagePayloads(images), buildingId, mapId);
+            SLAMLocalizeResult result = localizationService.localize(command);
             SLAMLocalizeResponse response = toResponse(result);
             fixtureCapture.writeResponse(capture, response);
             return response;
         } catch (RuntimeException e) {
             fixtureCapture.writeError(capture, e);
             throw e;
+        }
+    }
+
+    private List<ImagePayload> toImagePayloads(List<MultipartFile> files) {
+        if (files == null) {
+            return List.of();
+        }
+        return files.stream()
+                .filter(f -> f != null && !f.isEmpty())
+                .map(f -> new ImagePayload(readBytes(f), f.getOriginalFilename(), f.getContentType()))
+                .toList();
+    }
+
+    private static byte[] readBytes(MultipartFile file) {
+        try {
+            return file.getBytes();
+        } catch (IOException e) {
+            throw new ClientApiException(HttpStatus.BAD_REQUEST, "FILE_READ_FAILED", e.getMessage());
         }
     }
 

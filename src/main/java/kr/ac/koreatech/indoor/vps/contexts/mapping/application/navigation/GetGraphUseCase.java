@@ -4,13 +4,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapNodeEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapEdgeRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapNodeRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteEdge;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteNode;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,20 +16,14 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class GetGraphUseCase {
     private final FloorQueryService floorQuery;
-    private final BuildJobRepository buildJobRepository;
-    private final MapNodeRepository mapNodeRepository;
-    private final MapEdgeRepository mapEdgeRepository;
+    private final GraphQueryFacade graphQueryFacade;
 
     public GetGraphUseCase(
             FloorQueryService floorQuery,
-            BuildJobRepository buildJobRepository,
-            MapNodeRepository mapNodeRepository,
-            MapEdgeRepository mapEdgeRepository
+            GraphQueryFacade graphQueryFacade
     ) {
         this.floorQuery = floorQuery;
-        this.buildJobRepository = buildJobRepository;
-        this.mapNodeRepository = mapNodeRepository;
-        this.mapEdgeRepository = mapEdgeRepository;
+        this.graphQueryFacade = graphQueryFacade;
     }
 
     public FloorPathResult getFloorPath(UUID floorId) {
@@ -43,31 +33,18 @@ public class GetGraphUseCase {
             return FloorPathResult.empty(floorId);
         }
         UUID scanId = active.get().getScan().getScanId();
-        List<MapNodeEntity> nodes = nodes(scanId);
-        List<MapEdgeEntity> edges = edges(scanId);
-        return new FloorPathResult(floorId, scanId, latestBuildJobId(scanId), nodes, edges);
-    }
-
-    public List<MapNodeEntity> nodes(UUID scanId) {
-        return mapNodeRepository.findByScanIdAndStaleFalseOrderByNodeId(scanId);
-    }
-
-    public List<MapEdgeEntity> edges(UUID scanId) {
-        return mapEdgeRepository.findByScanIdAndStaleFalseOrderByEdgeId(scanId);
-    }
-
-    public UUID latestBuildJobId(UUID scanId) {
-        return buildJobRepository.findFirstByScan_ScanIdOrderByEnqueuedAtDesc(scanId)
-                .map(BuildJobEntity::getBuildJobId)
-                .orElse(null);
+        List<RouteNode> nodes = graphQueryFacade.routeNodes(scanId);
+        List<RouteEdge> edges = graphQueryFacade.routeEdges(scanId);
+        UUID buildJobId = graphQueryFacade.latestBuildJobId(scanId).orElse(null);
+        return new FloorPathResult(floorId, scanId, buildJobId, nodes, edges);
     }
 
     public record FloorPathResult(
             UUID floorId,
             UUID scanId,
             UUID buildJobId,
-            List<MapNodeEntity> nodes,
-            List<MapEdgeEntity> edges
+            List<RouteNode> nodes,
+            List<RouteEdge> edges
     ) {
         static FloorPathResult empty(UUID floorId) {
             return new FloorPathResult(floorId, null, null, List.of(), List.of());

@@ -3,7 +3,6 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.web.multipart.MultipartFile;
 
 public interface StreamingScanStorage {
 
@@ -11,7 +10,10 @@ public interface StreamingScanStorage {
 
     StreamingFrameStats append(UUID scanId, ScanFramesRequest request);
 
-    FinalizedStreamingScan finalizeScan(UUID scanId, MultipartFile manifest, MultipartFile metadata);
+    FinalizedStreamingScan finalizeScan(UUID scanId, FilePayload manifest, FilePayload metadata);
+
+    record FilePayload(byte[] content, String originalFilename) {
+    }
 
     record ScanFramesRequest(
             List<FramePayload> frames,
