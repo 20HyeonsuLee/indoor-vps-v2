@@ -17,9 +17,9 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapNodeRepo
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap.RtabmapGraphReader;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap.RtabmapGraphReader.RtabmapGraph;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap.RtabmapReprocessService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap.RtabmapReprocessService.RtabmapReprocessException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap.RtabmapReprocessService.RtabmapReprocessResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessResult;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -33,7 +33,7 @@ public class BuildJobRunner {
     private final MapNodeRepository mapNodeRepository;
     private final MapEdgeRepository mapEdgeRepository;
     private final RtabmapGraphReader graphReader;
-    private final RtabmapReprocessService reprocessService;
+    private final RtabmapReprocessor reprocessService;
     private final IndoorProperties properties;
     private final TransactionTemplate transactionTemplate;
     private final String workerId = "spring-build-worker-" + UUID.randomUUID();
@@ -44,7 +44,7 @@ public class BuildJobRunner {
             MapNodeRepository mapNodeRepository,
             MapEdgeRepository mapEdgeRepository,
             RtabmapGraphReader graphReader,
-            RtabmapReprocessService reprocessService,
+            RtabmapReprocessor reprocessService,
             IndoorProperties properties,
             TransactionTemplate transactionTemplate
     ) {

@@ -11,6 +11,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage.StoredScanArchive;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
@@ -22,10 +23,10 @@ class ScanArchiveStorageServiceTest {
     @Test
     void storesZipArchiveUnderCanonicalScanRoot() throws Exception {
         UUID scanId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
-        ScanArchiveStorageService service = service(tempDir);
+        ScanArchiveStorageAdapter service = service(tempDir);
         byte[] archive = zip(scanId.toString().toUpperCase(), false);
 
-        ScanArchiveStorageService.StoredScanArchive stored = service.store(
+        StoredScanArchive stored = service.store(
                 scanId,
                 new MockMultipartFile("file", "scan.zip", "application/zip", archive),
                 false
@@ -42,7 +43,7 @@ class ScanArchiveStorageServiceTest {
     @Test
     void resolvesScanIdFromZipRootWhenRequestOmitsScanId() throws Exception {
         UUID scanId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
-        ScanArchiveStorageService service = service(tempDir);
+        ScanArchiveStorageAdapter service = service(tempDir);
 
         UUID resolved = service.resolveScanId(
                 new MockMultipartFile("file", "scan.zip", "application/zip", zip(scanId.toString(), false)),
@@ -59,7 +60,7 @@ class ScanArchiveStorageServiceTest {
         Files.createDirectories(scanRoot);
         Files.writeString(scanRoot.resolve("rtabmap.db"), "old-rtabmap");
         Files.writeString(scanRoot.resolve("scan_metadata.db"), "old-sidecar");
-        ScanArchiveStorageService service = service(tempDir);
+        ScanArchiveStorageAdapter service = service(tempDir);
 
         assertThatThrownBy(() -> service.store(
                 scanId,
@@ -75,7 +76,7 @@ class ScanArchiveStorageServiceTest {
     @Test
     void rejectsZipSlipEntries() throws Exception {
         UUID scanId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
-        ScanArchiveStorageService service = service(tempDir);
+        ScanArchiveStorageAdapter service = service(tempDir);
 
         assertThatThrownBy(() -> service.store(
                 scanId,
@@ -86,10 +87,10 @@ class ScanArchiveStorageServiceTest {
                         assertThat(error.code()).isEqualTo("SCAN_ARCHIVE_INVALID"));
     }
 
-    private ScanArchiveStorageService service(Path storageRoot) {
+    private ScanArchiveStorageAdapter service(Path storageRoot) {
         IndoorProperties properties = new IndoorProperties();
         properties.setStorageRoot(storageRoot);
-        return new ScanArchiveStorageService(properties);
+        return new ScanArchiveStorageAdapter(properties);
     }
 
     private byte[] zip(String root, boolean withZipSlip) throws Exception {

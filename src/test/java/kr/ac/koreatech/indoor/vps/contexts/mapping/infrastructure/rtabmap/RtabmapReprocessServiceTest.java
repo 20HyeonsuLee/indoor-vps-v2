@@ -12,7 +12,8 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.rtabmap.RtabmapReprocessService.RtabmapReprocessException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -30,7 +31,7 @@ class RtabmapReprocessServiceTest {
                 """);
         RtabmapReprocessService service = new RtabmapReprocessService(properties(fakeBinary, false));
 
-        RtabmapReprocessService.RtabmapReprocessResult result = service.reprocess(UUID.randomUUID(), inputDb);
+        RtabmapReprocessResult result = service.reprocess(UUID.randomUUID(), inputDb);
 
         assertThat(result.status()).isEqualTo("succeeded");
         assertThat(result.hasUsableOutput()).isTrue();
@@ -44,7 +45,7 @@ class RtabmapReprocessServiceTest {
         Path inputDb = inputDb();
         RtabmapReprocessService service = new RtabmapReprocessService(properties(tempDir.resolve("missing"), false));
 
-        RtabmapReprocessService.RtabmapReprocessResult result = service.reprocess(UUID.randomUUID(), inputDb);
+        RtabmapReprocessResult result = service.reprocess(UUID.randomUUID(), inputDb);
 
         assertThat(result.status()).isEqualTo("skipped");
         assertThat(result.reason()).isEqualTo("binary_not_available");

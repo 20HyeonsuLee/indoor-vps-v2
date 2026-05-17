@@ -9,7 +9,14 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorApplic
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.NavigationApplicationService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.passage.PassageApplicationService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.poi.PoiApplicationService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ScanApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.FinalizeStreamingScanUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ListScanChunksUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergeScansUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ProcessFloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.PushStreamingFramesUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.StartStreamingScanUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.UploadScanChunkUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture.FixtureCaptureService;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 
@@ -41,8 +48,43 @@ public class TestApplicationBeans {
     }
 
     @Bean
-    ScanApplicationService scanApplicationService() {
-        return mock(ScanApplicationService.class);
+    StartStreamingScanUseCase startStreamingScanUseCase() {
+        return mock(StartStreamingScanUseCase.class);
+    }
+
+    @Bean
+    PushStreamingFramesUseCase pushStreamingFramesUseCase() {
+        return mock(PushStreamingFramesUseCase.class);
+    }
+
+    @Bean
+    FinalizeStreamingScanUseCase finalizeStreamingScanUseCase() {
+        return mock(FinalizeStreamingScanUseCase.class);
+    }
+
+    @Bean
+    UploadScanChunkUseCase uploadScanChunkUseCase() {
+        return mock(UploadScanChunkUseCase.class);
+    }
+
+    @Bean
+    ListScanChunksUseCase listScanChunksUseCase() {
+        return mock(ListScanChunksUseCase.class);
+    }
+
+    @Bean
+    MergeScansUseCase mergeScansUseCase() {
+        return mock(MergeScansUseCase.class);
+    }
+
+    @Bean
+    ProcessFloorUseCase processFloorUseCase() {
+        return mock(ProcessFloorUseCase.class);
+    }
+
+    @Bean
+    FixtureCaptureService fixtureCaptureService() {
+        return mock(FixtureCaptureService.class);
     }
 
     @Bean

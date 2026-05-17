@@ -12,20 +12,19 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
-public class RtabmapReprocessService {
+public class RtabmapReprocessService implements RtabmapReprocessor {
     private static final Logger log = LoggerFactory.getLogger(RtabmapReprocessService.class);
     private static final String RTABMAP_PARAMS = "Mem/IncrementalMemory=true;Rtabmap/DetectionRate=0;";
 
@@ -35,6 +34,7 @@ public class RtabmapReprocessService {
         this.properties = properties;
     }
 
+    @Override
     public RtabmapReprocessResult reprocess(UUID scanId, Path inputDb) {
         IndoorProperties.Rtabmap.Reprocess config = properties.getRtabmap().getReprocess();
         if (!config.isEnabled()) {
@@ -358,132 +358,5 @@ public class RtabmapReprocessService {
         byte[] bytes = Files.readAllBytes(path);
         int start = Math.max(0, bytes.length - 2000);
         return new String(bytes, start, bytes.length - start, StandardCharsets.UTF_8);
-    }
-
-    public static final class RtabmapReprocessException extends RuntimeException {
-        private final RtabmapReprocessResult result;
-
-        public RtabmapReprocessException(String message, RtabmapReprocessResult result) {
-            super(message);
-            this.result = result;
-        }
-
-        public RtabmapReprocessResult result() {
-            return result;
-        }
-    }
-
-    public record RtabmapReprocessResult(
-            String status,
-            String reason,
-            Path inputDbPath,
-            Path outputDbPath,
-            Path binaryPath,
-            List<String> command,
-            Duration duration,
-            Integer exitCode,
-            String stdoutTail,
-            String stderrTail
-    ) {
-        static RtabmapReprocessResult skipped(String reason, Path inputDb, Path outputDb, Map<String, Object> detail) {
-            return new RtabmapReprocessResult(
-                    "skipped",
-                    reason,
-                    inputDb,
-                    outputDb,
-                    null,
-                    List.of(),
-                    Duration.ZERO,
-                    null,
-                    "",
-                    detail == null ? "" : detail.toString()
-            );
-        }
-
-        static RtabmapReprocessResult alreadyReprocessed(Path inputDb, Path outputDb, Path binary) {
-            return new RtabmapReprocessResult(
-                    "succeeded",
-                    "already_reprocessed",
-                    inputDb,
-                    outputDb,
-                    binary,
-                    List.of(),
-                    Duration.ZERO,
-                    0,
-                    "",
-                    ""
-            );
-        }
-
-        static RtabmapReprocessResult succeeded(
-                Path inputDb,
-                Path outputDb,
-                Path binary,
-                List<String> command,
-                Duration duration,
-                String stdoutTail,
-                String stderrTail
-        ) {
-            return new RtabmapReprocessResult(
-                    "succeeded",
-                    "completed",
-                    inputDb,
-                    outputDb,
-                    binary,
-                    List.copyOf(command),
-                    duration,
-                    0,
-                    stdoutTail,
-                    stderrTail
-            );
-        }
-
-        static RtabmapReprocessResult failed(
-                String reason,
-                Path inputDb,
-                Path outputDb,
-                Path binary,
-                List<String> command,
-                Duration duration,
-                Integer exitCode,
-                String stdoutTail,
-                String stderrTail
-        ) {
-            return new RtabmapReprocessResult(
-                    "failed",
-                    reason,
-                    inputDb,
-                    outputDb,
-                    binary,
-                    List.copyOf(command),
-                    duration,
-                    exitCode,
-                    stdoutTail,
-                    stderrTail
-            );
-        }
-
-        public boolean hasUsableOutput() {
-            return "succeeded".equals(status) && outputDbPath != null && Files.exists(outputDbPath);
-        }
-
-        public Map<String, Object> metadata() {
-            Map<String, Object> metadata = new LinkedHashMap<>();
-            metadata.put("status", status);
-            metadata.put("reason", reason);
-            metadata.put("input_db_path", inputDbPath == null ? null : inputDbPath.toString());
-            metadata.put("output_db_path", outputDbPath == null ? null : outputDbPath.toString());
-            metadata.put("binary_path", binaryPath == null ? null : binaryPath.toString());
-            metadata.put("duration_ms", duration == null ? 0 : duration.toMillis());
-            metadata.put("exit_code", exitCode);
-            metadata.put("command", new ArrayList<>(command));
-            metadata.put("stdout_tail", stdoutTail == null ? "" : stdoutTail);
-            metadata.put("stderr_tail", stderrTail == null ? "" : stderrTail);
-            return metadata;
-        }
-
-        public Path effectiveDbPath() {
-            return hasUsableOutput() ? outputDbPath : inputDbPath;
-        }
     }
 }

@@ -8,20 +8,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Collections;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
-import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
-import org.apache.commons.compress.archivers.zip.ZipFile;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,16 +22,15 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
-public class ScanArchiveStorageService {
-    private static final long MAX_ENTRY_SIZE = 4L * 1024 * 1024 * 1024;
-    private static final List<String> REQUIRED_FILES = List.of("scan_metadata.db", "rtabmap.db");
+public class ScanArchiveStorageAdapter implements ScanArchiveStorage {
 
     private final IndoorProperties properties;
 
-    public ScanArchiveStorageService(IndoorProperties properties) {
+    public ScanArchiveStorageAdapter(IndoorProperties properties) {
         this.properties = properties;
     }
 
+    @Override
     public StoredScanArchive store(UUID scanId, MultipartFile upload, boolean force) {
         if (scanId == null) {
             throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "SCAN_ID_REQUIRED", "scan id must be resolved before storing");
@@ -57,7 +49,7 @@ public class ScanArchiveStorageService {
         try {
             Files.createDirectories(tempDir);
             StoredUpload storedUpload = copyAndHash(upload, tempZip);
-            extractArchive(tempZip, extractedScansRoot, scanId);
+            ZipArchiveValidator.validateAndExtract(tempZip, extractedScansRoot, scanId);
             replaceScanRoot(extractedScanRoot, scanRoot, force);
             return new StoredScanArchive(
                     scanId,
@@ -76,6 +68,7 @@ public class ScanArchiveStorageService {
         }
     }
 
+    @Override
     public UUID resolveScanId(MultipartFile upload, UUID requestedScanId) {
         if (upload == null || upload.isEmpty()) {
             throw badRequest("ZIP_ARCHIVE_REQUIRED", "scan archive zip is required");
@@ -86,9 +79,7 @@ public class ScanArchiveStorageService {
         try {
             Files.createDirectories(tempDir);
             copyOnly(upload, tempZip);
-            try (ZipFile zipFile = ZipFile.builder().setPath(tempZip).get()) {
-                return validateRoot(entries(zipFile), requestedScanId).scanId();
-            }
+            return ZipArchiveValidator.peekRoot(tempZip, requestedScanId).scanId();
         } catch (ClientApiException e) {
             throw e;
         } catch (IOException | IllegalArgumentException e) {
@@ -98,6 +89,7 @@ public class ScanArchiveStorageService {
         }
     }
 
+    @Override
     public void deleteScan(UUID scanId) {
         deleteRecursively(properties.getStorageRoot().resolve("scans").resolve(scanId.toString()));
     }
@@ -121,117 +113,6 @@ public class ScanArchiveStorageService {
         try (InputStream in = upload.getInputStream(); OutputStream out = Files.newOutputStream(destination)) {
             in.transferTo(out);
         }
-    }
-
-    private void extractArchive(Path zipPath, Path scansRoot, UUID scanId) {
-        try (ZipFile zipFile = ZipFile.builder().setPath(zipPath).get()) {
-            List<ZipArchiveEntry> entries = entries(zipFile);
-            ArchiveRoot archiveRoot = validateRoot(entries, scanId);
-            validateRequiredFiles(entries, archiveRoot.rootName());
-            validateEntries(entries);
-            extractEntries(zipFile, entries, archiveRoot.rootName(), scansRoot, scanId.toString());
-        } catch (ClientApiException e) {
-            throw e;
-        } catch (IOException | IllegalArgumentException e) {
-            throw badRequest("ZIP_ARCHIVE_REQUIRED", "upload must be a valid zip archive");
-        }
-    }
-
-    private List<ZipArchiveEntry> entries(ZipFile zipFile) {
-        Enumeration<ZipArchiveEntry> enumeration = zipFile.getEntries();
-        return Collections.list(enumeration);
-    }
-
-    private ArchiveRoot validateRoot(List<ZipArchiveEntry> entries, UUID requestedScanId) {
-        Set<String> roots = entries.stream()
-                .map(ZipArchiveEntry::getName)
-                .filter(name -> name != null && !name.isBlank())
-                .map(name -> name.split("/", 2)[0])
-                .collect(Collectors.toSet());
-        if (roots.size() != 1) {
-            throw badRequest(
-                    "SCAN_ARCHIVE_INVALID",
-                    "zip root directory must be exactly one scan id",
-                    roots
-            );
-        }
-        String rootName = roots.iterator().next();
-        UUID archiveScanId;
-        try {
-            archiveScanId = UUID.fromString(rootName);
-        } catch (IllegalArgumentException e) {
-            throw badRequest("SCAN_ARCHIVE_INVALID", "zip root directory must be a UUID scan id", roots);
-        }
-        if (requestedScanId != null && !archiveScanId.equals(requestedScanId)) {
-            throw badRequest(
-                    "SCAN_ARCHIVE_INVALID",
-                    "zip root directory must match scan_id",
-                    Map.of("expected", requestedScanId, "actual", archiveScanId)
-            );
-        }
-        return new ArchiveRoot(archiveScanId, rootName);
-    }
-
-    private void validateRequiredFiles(List<ZipArchiveEntry> entries, String zipRoot) {
-        Set<String> names = entries.stream()
-                .map(ZipArchiveEntry::getName)
-                .collect(Collectors.toSet());
-        for (String requiredFile : REQUIRED_FILES) {
-            String expected = zipRoot + "/" + requiredFile;
-            if (!names.contains(expected)) {
-                throw badRequest("SCAN_ARCHIVE_INVALID", "missing required file: " + requiredFile);
-            }
-        }
-    }
-
-    private void validateEntries(List<ZipArchiveEntry> entries) {
-        for (ZipArchiveEntry entry : entries) {
-            if (entry.isUnixSymlink()) {
-                throw badRequest("SCAN_ARCHIVE_INVALID", "zip symlink entries are not allowed");
-            }
-            if (entry.getSize() > MAX_ENTRY_SIZE) {
-                throw badRequest("SCAN_ARCHIVE_INVALID", "zip entry is too large: " + entry.getName());
-            }
-            Path normalized = Path.of(entry.getName()).normalize();
-            if (normalized.isAbsolute() || normalized.startsWith("..")) {
-                throw badRequest("SCAN_ARCHIVE_INVALID", "zip entry escapes scan root: " + entry.getName());
-            }
-        }
-    }
-
-    private void extractEntries(
-            ZipFile zipFile,
-            List<ZipArchiveEntry> entries,
-            String zipRoot,
-            Path scansRoot,
-            String canonicalScanId
-    ) throws IOException {
-        Path safeBase = scansRoot.resolve(canonicalScanId).toAbsolutePath().normalize();
-        for (ZipArchiveEntry entry : entries) {
-            String rewrittenName = rewriteRoot(entry.getName(), zipRoot, canonicalScanId);
-            Path target = scansRoot.resolve(rewrittenName).toAbsolutePath().normalize();
-            if (!target.equals(safeBase) && !target.startsWith(safeBase)) {
-                throw badRequest("SCAN_ARCHIVE_INVALID", "zip entry escapes scan root: " + entry.getName());
-            }
-            if (entry.isDirectory()) {
-                Files.createDirectories(target);
-                continue;
-            }
-            Files.createDirectories(target.getParent());
-            try (InputStream in = zipFile.getInputStream(entry); OutputStream out = Files.newOutputStream(target)) {
-                in.transferTo(out);
-            }
-        }
-    }
-
-    private String rewriteRoot(String name, String zipRoot, String canonicalScanId) {
-        if (name.equals(zipRoot)) {
-            return canonicalScanId;
-        }
-        if (name.startsWith(zipRoot + "/")) {
-            return canonicalScanId + "/" + name.substring(zipRoot.length() + 1);
-        }
-        return name;
     }
 
     private void replaceScanRoot(Path extractedScanRoot, Path scanRoot, boolean force) throws IOException {
@@ -287,10 +168,6 @@ public class ScanArchiveStorageService {
         return new ClientApiException(HttpStatus.BAD_REQUEST, code, message);
     }
 
-    private ClientApiException badRequest(String code, String message, Object detail) {
-        return new ClientApiException(HttpStatus.BAD_REQUEST, code, message, java.util.Map.of("detail", detail));
-    }
-
     private void deleteRecursively(Path root) {
         if (root == null || !Files.exists(root)) {
             return;
@@ -306,19 +183,6 @@ public class ScanArchiveStorageService {
         }
     }
 
-    public record StoredScanArchive(
-            UUID scanId,
-            String storagePath,
-            String fileName,
-            long size,
-            String sha256,
-            Path scanRoot
-    ) {
-    }
-
     private record StoredUpload(String sha256, long size) {
-    }
-
-    private record ArchiveRoot(UUID scanId, String rootName) {
     }
 }
