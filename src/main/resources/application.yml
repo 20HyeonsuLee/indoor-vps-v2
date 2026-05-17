@@ -1,16 +1,16 @@
 spring:
   application:
     name: indoor-vps-v2
-  datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:55432/indoor}
-    username: ${POSTGRES_USER:indoor}
-    password: ${POSTGRES_PASSWORD:indoor}
+  profiles:
+    default: local
+  servlet:
+    multipart:
+      max-file-size: ${MULTIPART_MAX_FILE_SIZE:2GB}
+      max-request-size: ${MULTIPART_MAX_REQUEST_SIZE:2GB}
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate
-  flyway:
-    enabled: ${FLYWAY_ENABLED:false}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -22,18 +22,17 @@ springdoc:
     path: /openapi.json
 
 indoor:
-  storage-root: ${STORAGE_ROOT:./var/storage}
   python:
-    enabled: ${PYTHON_BRIDGE_ENABLED:false}
     executable: ${PYTHON_EXECUTABLE:python3}
     bridge-script: ${PYTHON_BRIDGE_SCRIPT:./scripts/python_bridge/bridge_entry.py}
     backend-source: ${PYTHON_BACKEND_SRC:./python/legacy_backend/src}
-    device: ${PYTHON_ML_DEVICE:cpu}
     timeout-seconds: ${PYTHON_BRIDGE_TIMEOUT_SECONDS:60}
+  rtabmap:
+    reprocess:
+      enabled: ${RTABMAP_REPROCESS_ENABLED:true}
+      executable: ${RTABMAP_REPROCESS_BIN:rtabmap-reprocess}
+      timeout-seconds: ${RTABMAP_REPROCESS_TIMEOUT_SECONDS:300}
   build-worker:
     enabled: ${BUILD_WORKER_ENABLED:true}
     poll-interval-ms: ${BUILD_WORKER_POLL_INTERVAL_MS:2000}
     batch-size: ${BUILD_WORKER_BATCH_SIZE:1}
-  fixture-capture:
-    enabled: ${FIXTURE_CAPTURE_ENABLED:false}
-    root: ${FIXTURE_CAPTURE_ROOT:./test-fixtures/captured}

@@ -4,11 +4,10 @@
 
 Acceptance E2E is the primary confidence layer for `indoor-vps-v2`.
 
-- Acceptance scenarios are written in Korean Gherkin under `src/test/resources/features`.
-- Cucumber step definitions and support utilities live under `src/test/java`.
-- Feature files use product language. RTAB-Map, ZIP, node, and edge details stay in steps/support unless the scenario itself is about that contract.
-- Step definitions are split by domain: building setup, scan upload, map build, map assertions, pathfinding, and error handling.
-- Test utility code is under `acceptance/support`; feature and step files should not rebuild HTTP, multipart, fixture, or cleanup logic.
+- Acceptance scenarios are written as Karate feature files under `src/test/resources/karate/acceptance`.
+- Feature and scenario names stay Korean; HTTP steps use Karate DSL.
+- Feature files use product language first. RTAB-Map, ZIP, SQLite, and temp-file details stay in `karate/support` unless the scenario itself is about that contract.
+- Test utility code is under `karate/support`; feature files should not rebuild fixture, storage, build-runner, or SQLite inspection logic.
 - Acceptance tests run a real Spring server, real HTTP, Testcontainers PostgreSQL, Flyway, JPA, and temp filesystem storage.
 - Real device scan ZIPs and localization images can be captured with `FIXTURE_CAPTURE_ENABLED=true`; see `docs/testing/real-device-fixtures.md`.
 - Unit tests are kept for complex pure logic only.
@@ -26,7 +25,7 @@ Acceptance E2E is the primary confidence layer for `indoor-vps-v2`.
 ## E2E Runtime
 
 - Spring Boot: `RANDOM_PORT`
-- HTTP client: real HTTP, not `MockMvc`
+- HTTP client: Karate HTTP DSL over real HTTP, not `MockMvc`
 - DB: Testcontainers PostgreSQL with PostGIS and pgvector
 - Schema: Flyway enabled, `baseline-on-migrate=true`, `baseline-version=0`, Hibernate `validate`
 - Storage: temp directory per test JVM
@@ -45,18 +44,18 @@ This is a pinned fallback because the production DB image tag is not recorded in
 this repo yet. Replace it with the production tag through:
 
 ```bash
-./gradlew e2eTest -Pindoor.e2e.db.image=<prod-db-image-tag>
+./gradlew karateTest -Pindoor.e2e.db.image=<prod-db-image-tag>
 ```
 
 ## PR Gate
 
 ```bash
 ./gradlew test
-./gradlew e2eTest
+./gradlew karateTest
 ./gradlew bootJar
 ```
 
-`./gradlew test` excludes the Cucumber engine; `./gradlew e2eTest` runs Cucumber scenarios tagged `@acceptance`.
+`./gradlew test` excludes JUnit tests tagged `e2e`; `./gradlew karateTest` runs Karate scenarios tagged `@acceptance`.
 
 ## E2E Scenarios
 
@@ -68,6 +67,7 @@ this repo yet. Replace it with the production tag through:
 | `floor_map_cache.feature` | ETag 재조회는 304와 빈 본문 반환 |
 | `building_pathfinding.feature` | 목적지 검색 실패를 `destinationFound=false` 결과로 반환 |
 | `request_error.feature` | 잘못된 식별자는 표준 오류 응답으로 반환 |
+| `streaming_scan_upload.feature` | start -> frames -> finalize -> build 요청 플로우 검증 |
 
 ## Main Scenario Flow
 
@@ -79,13 +79,14 @@ this repo yet. Replace it with the production tag through:
 6. Run the claimed build job directly.
 7. Assert process status, floor path, floor map, and route response.
 
-## Cucumber Rules
+## Karate Rules
 
 - One scenario describes one externally visible workflow or failure mode.
 - Background is avoided until at least two feature files repeat the same story setup inside one feature.
-- Step text avoids implementation terms when a planner can describe the behavior without them.
-- Step definitions may call lower-level helper methods, but scenario text should not encode HTTP shape.
-- Scenario state is scenario-scoped. Static mutable state is limited to expensive infrastructure such as the Testcontainers database.
+- Scenario titles use Korean acceptance language.
+- Karate DSL may expose HTTP shape because this project tests an API product surface.
+- Java interop is limited to expensive or low-level utilities: fixture generation, build-job execution, filesystem checks, and SQLite checks.
+- Static mutable state is limited to expensive infrastructure such as the Testcontainers database and Spring Boot server wiring.
 
 ## Not In PR Gate
 

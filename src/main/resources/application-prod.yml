@@ -1,3 +1,22 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+
 indoor:
+  storage-root: ${STORAGE_ROOT:/data/storage}
   python:
+    enabled: ${PYTHON_BRIDGE_ENABLED:false}
     device: ${PYTHON_ML_DEVICE:cuda}
+  rtabmap:
+    reprocess:
+      required: ${RTABMAP_REPROCESS_REQUIRED:false}
+  fixture-capture:
+    enabled: ${FIXTURE_CAPTURE_ENABLED:false}
+    root: ${FIXTURE_CAPTURE_ROOT:/app/test-fixtures/captured}

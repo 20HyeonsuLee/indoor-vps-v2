@@ -46,15 +46,36 @@ FIXTURE_CAPTURE_ENABLED=true FIXTURE_CAPTURE_ROOT=./test-fixtures/captured ./gra
 Captured raw data is written under `test-fixtures/captured/`; see
 `docs/testing/real-device-fixtures.md`.
 
+## Docker run
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+curl http://127.0.0.1:8080/openapi.json
+```
+
+Phone fixture capture with Docker:
+
+```bash
+FIXTURE_CAPTURE_ENABLED=true docker compose -f docker-compose.local.yml up -d --build
+```
+
 ## Architecture
 
-The Java migration uses a DDD-style package boundary:
+The Java migration uses the project prompt package boundary:
 
-- `api`: Spring MVC controllers, request/response DTOs, OpenAPI tags
-- `application`: use-case services grouped by domain workflow
-- `domain`: domain enums, value objects, and pure domain services
-- `infrastructure`: JPA entities/repositories, RTAB-Map readers, filesystem storage, localization adapters
+- `app`: Spring Boot entrypoint and global exception advice
+- `config`: global Spring configuration and typed properties
+- `shared`: shared exception primitives with no context dependency
+- `contexts/mapping/application`: use-case services grouped by workflow
+- `contexts/mapping/domain`: JPA entities/repositories, domain enums, value objects, and pure domain services
+- `contexts/mapping/infrastructure`: RTAB-Map readers, filesystem storage, localization adapters, request logging
+- `contexts/mapping/infrastructure/web`: Spring MVC controllers and request/response DTOs
 - `python/legacy_backend`: vendored Python runtime used only by the bridge
+
+Environment-specific runtime files are split into:
+
+- `application-local.yml`, `docker/Dockerfile.local`, `docker-compose.local.yml`
+- `application-prod.yml`, `docker/Dockerfile.prod`, `docker-compose.prod.yml`
 
 ## Harness
 

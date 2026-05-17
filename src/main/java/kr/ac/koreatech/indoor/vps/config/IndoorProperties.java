@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class IndoorProperties {
     private Path storageRoot = Path.of("./var/storage");
     private Python python = new Python();
+    private Rtabmap rtabmap = new Rtabmap();
     private BuildWorker buildWorker = new BuildWorker();
     private FixtureCapture fixtureCapture = new FixtureCapture();
 
@@ -24,6 +25,14 @@ public class IndoorProperties {
 
     public void setPython(Python python) {
         this.python = python;
+    }
+
+    public Rtabmap getRtabmap() {
+        return rtabmap;
+    }
+
+    public void setRtabmap(Rtabmap rtabmap) {
+        this.rtabmap = rtabmap;
     }
 
     public BuildWorker getBuildWorker() {
@@ -96,6 +105,57 @@ public class IndoorProperties {
 
         public void setTimeoutSeconds(long timeoutSeconds) {
             this.timeoutSeconds = timeoutSeconds;
+        }
+    }
+
+    public static class Rtabmap {
+        private Reprocess reprocess = new Reprocess();
+
+        public Reprocess getReprocess() {
+            return reprocess;
+        }
+
+        public void setReprocess(Reprocess reprocess) {
+            this.reprocess = reprocess;
+        }
+
+        public static class Reprocess {
+            private boolean enabled = true;
+            private boolean required;
+            private String executable = "rtabmap-reprocess";
+            private long timeoutSeconds = 300;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public boolean isRequired() {
+                return required;
+            }
+
+            public void setRequired(boolean required) {
+                this.required = required;
+            }
+
+            public String getExecutable() {
+                return executable;
+            }
+
+            public void setExecutable(String executable) {
+                this.executable = executable;
+            }
+
+            public long getTimeoutSeconds() {
+                return timeoutSeconds;
+            }
+
+            public void setTimeoutSeconds(long timeoutSeconds) {
+                this.timeoutSeconds = timeoutSeconds;
+            }
         }
     }
 

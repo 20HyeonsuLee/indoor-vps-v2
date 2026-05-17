@@ -33,29 +33,25 @@ dependencies {
 
     runtimeOnly("org.postgresql:postgresql")
 
-    testImplementation(platform("io.cucumber:cucumber-bom:7.34.3"))
     testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.2"))
     testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
     testImplementation("org.springframework.boot:spring-boot-starter-flyway-test")
     testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
-    testImplementation("io.cucumber:cucumber-java")
-    testImplementation("io.cucumber:cucumber-spring")
+    testImplementation("io.karatelabs:karate-junit6:2.0.9")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
-    testRuntimeOnly("io.cucumber:cucumber-junit-platform-engine")
 }
 
 tasks.test {
     useJUnitPlatform {
-        excludeEngines("cucumber")
         excludeTags("e2e")
     }
 }
 
-tasks.register<Test>("e2eTest") {
-    description = "Runs isolated end-to-end tests against Testcontainers dependencies."
+val karateTest by tasks.registering(Test::class) {
+    description = "Runs Karate end-to-end tests against Testcontainers dependencies."
     group = "verification"
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
@@ -65,12 +61,17 @@ tasks.register<Test>("e2eTest") {
             .orElse("garapadev/postgres-postgis-pgvector:15-stable")
             .get()
     )
-    systemProperty("cucumber.features", "classpath:features")
-    systemProperty("cucumber.glue", "kr.ac.koreatech.indoor.vps.acceptance")
-    systemProperty("cucumber.filter.tags", "@acceptance")
-    systemProperty("cucumber.plugin", "pretty,summary")
+    systemProperties(System.getProperties().entries
+        .filter { it.key.toString().startsWith("karate.") }
+        .associate { it.key.toString() to it.value.toString() })
     shouldRunAfter(tasks.named("test"))
     useJUnitPlatform {
-        includeEngines("cucumber")
+        includeTags("e2e")
     }
+}
+
+tasks.register("e2eTest") {
+    description = "Alias for karateTest."
+    group = "verification"
+    dependsOn(karateTest)
 }

@@ -1,0 +1,44 @@
+# syntax=docker/dockerfile:1.7
+
+FROM eclipse-temurin:21-jdk AS build
+WORKDIR /workspace
+
+COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
+COPY gradle ./gradle
+RUN chmod +x ./gradlew
+
+COPY src ./src
+COPY scripts ./scripts
+COPY python ./python
+
+RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon bootJar -x test
+
+FROM introlab3it/rtabmap:noble
+WORKDIR /app
+
+COPY --from=eclipse-temurin:21-jre /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH=/opt/java/openjdk/bin:${PATH}
+
+COPY --from=build /workspace/build/libs/*.jar /app/app.jar
+COPY --from=build /workspace/scripts /app/scripts
+COPY --from=build /workspace/python /app/python
+
+ENV SERVER_PORT=8080 \
+    SPRING_PROFILES_ACTIVE=local \
+    STORAGE_ROOT=/data/storage \
+    FLYWAY_ENABLED=true \
+    SPRING_FLYWAY_BASELINE_ON_MIGRATE=true \
+    SPRING_FLYWAY_BASELINE_VERSION=0 \
+    PYTHON_BRIDGE_ENABLED=false \
+    PYTHON_BACKEND_SRC=/app/python/legacy_backend/src \
+    PYTHON_BRIDGE_SCRIPT=/app/scripts/python_bridge/bridge_entry.py \
+    PYTHON_ML_DEVICE=cpu \
+    RTABMAP_REPROCESS_ENABLED=true \
+    RTABMAP_REPROCESS_BIN=rtabmap-reprocess
+
+RUN java -version && command -v rtabmap-reprocess
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

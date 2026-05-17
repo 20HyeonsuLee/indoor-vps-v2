@@ -1,0 +1,52 @@
+services:
+  db:
+    image: garapadev/postgres-postgis-pgvector:15-stable
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-indoor}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    platform: linux/amd64
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/indoor
+      SPRING_PROFILES_ACTIVE: prod
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      FLYWAY_ENABLED: "true"
+      SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+      SPRING_FLYWAY_BASELINE_VERSION: "0"
+      STORAGE_ROOT: /data/storage
+      PYTHON_BRIDGE_ENABLED: "${PYTHON_BRIDGE_ENABLED:-false}"
+      PYTHON_BACKEND_SRC: /app/python/legacy_backend/src
+      PYTHON_BRIDGE_SCRIPT: /app/scripts/python_bridge/bridge_entry.py
+      PYTHON_ML_DEVICE: "${PYTHON_ML_DEVICE:-cuda}"
+      RTABMAP_REPROCESS_ENABLED: "${RTABMAP_REPROCESS_ENABLED:-true}"
+      RTABMAP_REPROCESS_REQUIRED: "${RTABMAP_REPROCESS_REQUIRED:-false}"
+      RTABMAP_REPROCESS_BIN: "${RTABMAP_REPROCESS_BIN:-rtabmap-reprocess}"
+      FIXTURE_CAPTURE_ENABLED: "${FIXTURE_CAPTURE_ENABLED:-false}"
+      FIXTURE_CAPTURE_ROOT: /app/test-fixtures/captured
+      MULTIPART_MAX_FILE_SIZE: "${MULTIPART_MAX_FILE_SIZE:-2GB}"
+      MULTIPART_MAX_REQUEST_SIZE: "${MULTIPART_MAX_REQUEST_SIZE:-2GB}"
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    volumes:
+      - app-storage:/data/storage
+
+volumes:
+  db-data:
+  app-storage:
