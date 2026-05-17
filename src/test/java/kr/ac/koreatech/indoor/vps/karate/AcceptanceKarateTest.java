@@ -73,7 +73,7 @@ class AcceptanceKarateTest {
         System.setProperty("karate.baseUrl", baseUrl);
         AcceptanceKarateSupport.configure(buildJobRunner, indoorProperties.getStorageRoot());
 
-        SuiteResult results = Runner.path("classpath:karate/acceptance")
+        SuiteResult results = Runner.path("classpath:karate/mapping")
                 .tags("@acceptance")
                 .parallel(1);
 
