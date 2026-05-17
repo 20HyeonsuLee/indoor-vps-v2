@@ -4,11 +4,16 @@ import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.LocalizationMapProvider;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingApplicationService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorApplicationService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.NavigationApplicationService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.passage.PassageApplicationService;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.poi.PoiApplicationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.SlamLocalizationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingQueryService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFloorMapUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetGraphUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PlanRouteUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.passage.PassageUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.poi.PoiUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.FinalizeStreamingScanUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ListScanChunksUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergeScansUseCase;
@@ -23,28 +28,53 @@ import org.springframework.context.annotation.Bean;
 @TestConfiguration(proxyBeanMethods = false)
 public class TestApplicationBeans {
     @Bean
-    BuildingApplicationService buildingApplicationService() {
-        return mock(BuildingApplicationService.class);
+    BuildingUseCase buildingUseCase() {
+        return mock(BuildingUseCase.class);
     }
 
     @Bean
-    FloorApplicationService floorApplicationService() {
-        return mock(FloorApplicationService.class);
+    BuildingQueryService buildingQueryService() {
+        return mock(BuildingQueryService.class);
     }
 
     @Bean
-    NavigationApplicationService navigationApplicationService() {
-        return mock(NavigationApplicationService.class);
+    FloorUseCase floorUseCase() {
+        return mock(FloorUseCase.class);
     }
 
     @Bean
-    PoiApplicationService poiApplicationService() {
-        return mock(PoiApplicationService.class);
+    FloorQueryService floorQueryService() {
+        return mock(FloorQueryService.class);
     }
 
     @Bean
-    PassageApplicationService passageApplicationService() {
-        return mock(PassageApplicationService.class);
+    PlanRouteUseCase planRouteUseCase() {
+        return mock(PlanRouteUseCase.class);
+    }
+
+    @Bean
+    GetGraphUseCase getGraphUseCase() {
+        return mock(GetGraphUseCase.class);
+    }
+
+    @Bean
+    GetFloorMapUseCase getFloorMapUseCase() {
+        return mock(GetFloorMapUseCase.class);
+    }
+
+    @Bean
+    PoiUseCase poiUseCase() {
+        return mock(PoiUseCase.class);
+    }
+
+    @Bean
+    PassageUseCase passageUseCase() {
+        return mock(PassageUseCase.class);
+    }
+
+    @Bean
+    SlamLocalizationService slamLocalizationService() {
+        return mock(SlamLocalizationService.class);
     }
 
     @Bean

@@ -92,6 +92,6 @@ class FixtureCaptureServiceTest {
         IndoorProperties properties = new IndoorProperties();
         properties.getFixtureCapture().setEnabled(enabled);
         properties.getFixtureCapture().setRoot(root);
-        return new FixtureCaptureService(properties, objectMapper);
+        return new FixtureCaptureService(properties, new CaptureFileIo(objectMapper));
     }
 }

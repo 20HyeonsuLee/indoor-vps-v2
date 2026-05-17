@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapNodeEntity;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,7 +24,7 @@ class RtabmapGraphReaderTest {
         UUID buildJobId = UUID.fromString("11111111-2222-3333-4444-555555555555");
         createDatabase(db);
 
-        RtabmapGraphReader.RtabmapGraph graph = new RtabmapGraphReader().read(db, scanId, buildJobId);
+        RtabmapGraphReader.RtabmapGraph graph = new RtabmapGraphReaderAdapter().read(db, scanId, buildJobId);
 
         assertThat(graph.nodes()).hasSize(2);
         assertThat(graph.nodes()).extracting(MapNodeEntity::getLabel)

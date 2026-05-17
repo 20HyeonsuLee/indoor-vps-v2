@@ -14,7 +14,6 @@ import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage.StoredScanArchive;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.mock.web.MockMultipartFile;
 
 class ScanArchiveStorageServiceTest {
     @TempDir
@@ -28,7 +27,8 @@ class ScanArchiveStorageServiceTest {
 
         StoredScanArchive stored = service.store(
                 scanId,
-                new MockMultipartFile("file", "scan.zip", "application/zip", archive),
+                archive,
+                "scan.zip",
                 false
         );
 
@@ -46,7 +46,8 @@ class ScanArchiveStorageServiceTest {
         ScanArchiveStorageAdapter service = service(tempDir);
 
         UUID resolved = service.resolveScanId(
-                new MockMultipartFile("file", "scan.zip", "application/zip", zip(scanId.toString(), false)),
+                zip(scanId.toString(), false),
+                "scan.zip",
                 null
         );
 
@@ -64,7 +65,8 @@ class ScanArchiveStorageServiceTest {
 
         assertThatThrownBy(() -> service.store(
                 scanId,
-                new MockMultipartFile("file", "scan.zip", "application/zip", zipMissingRequired(scanId.toString())),
+                zipMissingRequired(scanId.toString()),
+                "scan.zip",
                 true
         ))
                 .isInstanceOf(ClientApiException.class);
@@ -80,7 +82,8 @@ class ScanArchiveStorageServiceTest {
 
         assertThatThrownBy(() -> service.store(
                 scanId,
-                new MockMultipartFile("file", "scan.zip", "application/zip", zip(scanId.toString(), true)),
+                zip(scanId.toString(), true),
+                "scan.zip",
                 false
         ))
                 .isInstanceOfSatisfying(ClientApiException.class, error ->

@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge;
+package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.bridge;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,12 +10,12 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.FloorMapBridgeRef;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.LocalizeBridgeRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.FloorMapBridgeRef;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import org.junit.jupiter.api.Test;
 
-class PythonBridgeContractTest {
+class PythonBridgeAdapterTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
@@ -75,15 +75,15 @@ class PythonBridgeContractTest {
     }
 
     @Test
-    void javaBridgeClientPreservesTypedPythonErrors() {
+    void javaBridgeAdapterPreservesTypedPythonErrors() {
         IndoorProperties properties = new IndoorProperties();
         properties.getPython().setEnabled(true);
         properties.getPython().setExecutable("python3");
         properties.getPython().setBridgeScript(Path.of("scripts/python_bridge/bridge_entry.py"));
         properties.getPython().setBackendSource("/tmp/indoor-vps-v2-missing-python-src");
-        PythonBridgeClient client = new PythonBridgeClient(properties, objectMapper);
+        PythonBridgeAdapter adapter = new PythonBridgeAdapter(properties, objectMapper);
 
-        assertThatThrownBy(() -> client.localize(new LocalizeBridgeRequest(
+        assertThatThrownBy(() -> adapter.localize(new LocalizeBridgeRequest(
                 "building-1",
                 List.of("/tmp/frame.jpg"),
                 "/tmp/storage",
@@ -99,15 +99,15 @@ class PythonBridgeContractTest {
     }
 
     @Test
-    void javaBridgeClientForcesConfiguredMlDevice() {
+    void javaBridgeAdapterForcesConfiguredMlDevice() {
         IndoorProperties properties = new IndoorProperties();
         properties.getPython().setEnabled(true);
         properties.getPython().setExecutable("python3");
         properties.getPython().setBridgeScript(Path.of("scripts/python_bridge/bridge_entry.py"));
         properties.getPython().setDevice("cpu");
-        PythonBridgeClient client = new PythonBridgeClient(properties, objectMapper);
+        PythonBridgeAdapter adapter = new PythonBridgeAdapter(properties, objectMapper);
 
-        BridgeContracts.HealthBridgeResponse health = client.health();
+        kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.HealthBridgeResponse health = adapter.health();
 
         assertThat(health.mlDevice()).isEqualTo("cpu");
         assertThat(health.cudaVisibleDevices()).isEmpty();
