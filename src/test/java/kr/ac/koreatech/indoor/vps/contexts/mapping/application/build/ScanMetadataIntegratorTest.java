@@ -182,6 +182,31 @@ class ScanMetadataIntegratorTest {
     }
 
     @Test
+    void poiMarkBeyondOldSnapDistanceStillConnectsToCorridor() {
+        UUID scanId = UUID.randomUUID();
+        UUID buildJobId = UUID.randomUUID();
+        SessionInfo session = new SessionInfo(null, null, null, null, null);
+
+        // corridor at origin, poi at 0.72 m — previously outside SNAP_DISTANCE_M=0.5
+        BranchMarkRow corridor = new BranchMarkRow(7L, 1, "corridor", 0.0, 0.0, 0.0, null, null, null);
+        PoiMarkRow poi = new PoiMarkRow(1L, 2, 0.72, 0.0, 0.0, null);
+
+        ScanMetadata metadata = new ScanMetadata(
+                session,
+                List.of(),
+                List.of(corridor),
+                List.of(),
+                List.of(poi),
+                List.of()
+        );
+
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+
+        assertThat(result.edges()).hasSize(1);
+        assertThat(result.edges().getFirst().getEdgeType()).isEqualTo(EdgeType.poi_spur);
+    }
+
+    @Test
     void emptyMetadataProducesEmptyResult() {
         UUID scanId = UUID.randomUUID();
         UUID buildJobId = UUID.randomUUID();

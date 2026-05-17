@@ -82,7 +82,7 @@ class BuildGraphPersister {
             mapEdgeRepository.saveAll(result.edges());
             polygonRepository.saveAll(result.polygons());
             poiCanonicalRepository.saveAllAndFlush(result.pois());
-            verticalConnectorStopRepository.saveAll(result.stops());
+            verticalConnectorStopRepository.saveAllAndFlush(result.stops());
             enrichDeviceInfo(job.getScan(), metadata);
             nodeCount = result.nodes().size();
             edgeCount = result.edges().size();

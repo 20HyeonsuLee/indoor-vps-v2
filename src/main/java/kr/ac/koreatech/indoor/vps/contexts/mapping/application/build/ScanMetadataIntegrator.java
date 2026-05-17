@@ -42,7 +42,7 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 class ScanMetadataIntegrator {
 
-    private static final double SNAP_DISTANCE_M = 0.5;
+    private static final double MAX_SPUR_DISTANCE_M = 5.0;
     private static final String KIND_SEQUENTIAL = "sequential";
 
     private final BuildingRepository buildingRepository;
@@ -313,7 +313,7 @@ class ScanMetadataIntegrator {
             Map<Long, MapNodeEntity> corridorById
     ) {
         MapNodeEntity best = null;
-        double bestDist = SNAP_DISTANCE_M;
+        double bestDist = MAX_SPUR_DISTANCE_M;
         for (MapNodeEntity node : corridorById.values()) {
             double d = target.distanceTo(nodeCenter(node));
             if (d < bestDist) {
