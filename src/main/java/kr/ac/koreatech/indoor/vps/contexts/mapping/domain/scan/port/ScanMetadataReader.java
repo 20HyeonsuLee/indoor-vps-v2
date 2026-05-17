@@ -30,6 +30,14 @@ public interface ScanMetadataReader {
     ) {
     }
 
+    record BranchEdgeRow(
+            long id,
+            long fromMarkId,
+            long toMarkId,
+            String kind
+    ) {
+    }
+
     record PoiMarkRow(
             long id,
             int keyframeSeq,
@@ -64,6 +72,7 @@ public interface ScanMetadataReader {
             SessionInfo session,
             List<KeyframeRow> keyframes,
             List<BranchMarkRow> branchMarks,
+            List<BranchEdgeRow> branchEdges,
             List<PoiMarkRow> poiMarks,
             List<InterfloorMarkRow> interfloorMarks
     ) {

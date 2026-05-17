@@ -39,6 +39,7 @@ class ScanMetadataReaderAdapterTest {
         assertThat(metadata.branchMarks()).hasSize(2);
         assertThat(metadata.branchMarks().get(0).nodeType()).isEqualTo("corridor");
         assertThat(metadata.branchMarks().get(1).nodeType()).isEqualTo("corner");
+        assertThat(metadata.branchEdges()).isEmpty();
         assertThat(metadata.poiMarks()).hasSize(1);
         assertThat(metadata.poiMarks().getFirst().label()).isEqualTo("강의실 101");
         assertThat(metadata.interfloorMarks()).hasSize(1);

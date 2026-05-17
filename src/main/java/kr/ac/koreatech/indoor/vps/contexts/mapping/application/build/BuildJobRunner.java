@@ -9,7 +9,6 @@ import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader.RtabmapGraph;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader.RtabmapGraphReadException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
@@ -97,13 +96,10 @@ public class BuildJobRunner {
             }
             RtabmapReprocessResult reprocess = reprocessService.reprocess(input.scanId(), input.dbPath());
             Path graphDbPath = reprocess.effectiveDbPath();
-            RtabmapGraph graph = graphReader.read(graphDbPath, input.scanId(), buildJobId);
-            if (graph.nodes().isEmpty()) {
-                throw new BuildInputException("rtabmap graph has no nodes");
-            }
+            validateRtabmapGraph(graphDbPath, input.scanId(), buildJobId);
             Optional<ScanMetadata> metadata = metadataReader.read(metadataDbPath(input.dbPath()));
             transactionTemplate.executeWithoutResult(
-                    status -> graphPersister.persistSuccess(buildJobId, input.scanId(), input.dbPath(), graph, reprocess, metadata)
+                    status -> graphPersister.persistSuccess(buildJobId, input.scanId(), input.dbPath(), reprocess, metadata)
             );
         } catch (BuildInputException | RtabmapGraphReadException e) {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
@@ -111,6 +107,13 @@ public class BuildJobRunner {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
         } catch (RuntimeException e) {
             markFailure(buildJobId, BuildFailureReason.internal, e.getMessage());
+        }
+    }
+
+    private void validateRtabmapGraph(Path graphDbPath, UUID scanId, UUID buildJobId) {
+        var graph = graphReader.read(graphDbPath, scanId, buildJobId);
+        if (graph.nodes().isEmpty()) {
+            throw new BuildInputException("rtabmap graph has no nodes");
         }
     }
 

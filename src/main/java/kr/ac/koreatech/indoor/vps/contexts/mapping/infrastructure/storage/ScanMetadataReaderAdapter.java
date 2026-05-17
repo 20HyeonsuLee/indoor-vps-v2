@@ -33,6 +33,7 @@ public class ScanMetadataReaderAdapter implements ScanMetadataReader {
                     session,
                     readKeyframes(jdbc),
                     readBranchMarks(jdbc),
+                    readBranchEdges(jdbc),
                     readPoiMarks(jdbc),
                     readInterfloorMarks(jdbc)
             ));
@@ -107,6 +108,26 @@ public class ScanMetadataReaderAdapter implements ScanMetadataReader {
                     );
                 })
                 .list();
+    }
+
+    private List<BranchEdgeRow> readBranchEdges(JdbcClient jdbc) {
+        try {
+            return jdbc.sql("""
+                    SELECT id, from_mark_id, to_mark_id, kind
+                    FROM branch_edge
+                    ORDER BY id
+                    """)
+                    .query((rs, rowNum) -> new BranchEdgeRow(
+                            rs.getLong("id"),
+                            rs.getLong("from_mark_id"),
+                            rs.getLong("to_mark_id"),
+                            rs.getString("kind")
+                    ))
+                    .list();
+        } catch (RuntimeException e) {
+            log.debug("branch_edge table not found or unreadable, skipping: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     private List<PoiMarkRow> readPoiMarks(JdbcClient jdbc) {

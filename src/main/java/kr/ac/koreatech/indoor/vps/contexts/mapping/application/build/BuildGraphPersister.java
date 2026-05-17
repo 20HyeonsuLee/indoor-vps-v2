@@ -1,19 +1,16 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.build;
 
-import java.util.ArrayList;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.build.ScanMetadataIntegrator.IntegrationResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader.RtabmapGraph;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapNodeEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorAreaPolygonRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapEdgeRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapNodeRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.PoiCanonicalRepository;
@@ -27,10 +24,12 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 class BuildGraphPersister {
+
     private final BuildJobRepository buildJobRepository;
     private final ScanIngestRepository scanIngestRepository;
     private final MapNodeRepository mapNodeRepository;
     private final MapEdgeRepository mapEdgeRepository;
+    private final FloorAreaPolygonRepository polygonRepository;
     private final PoiCanonicalRepository poiCanonicalRepository;
     private final VerticalConnectorStopRepository verticalConnectorStopRepository;
     private final ScanMetadataIntegrator metadataIntegrator;
@@ -40,6 +39,7 @@ class BuildGraphPersister {
             ScanIngestRepository scanIngestRepository,
             MapNodeRepository mapNodeRepository,
             MapEdgeRepository mapEdgeRepository,
+            FloorAreaPolygonRepository polygonRepository,
             PoiCanonicalRepository poiCanonicalRepository,
             VerticalConnectorStopRepository verticalConnectorStopRepository,
             ScanMetadataIntegrator metadataIntegrator
@@ -48,6 +48,7 @@ class BuildGraphPersister {
         this.scanIngestRepository = scanIngestRepository;
         this.mapNodeRepository = mapNodeRepository;
         this.mapEdgeRepository = mapEdgeRepository;
+        this.polygonRepository = polygonRepository;
         this.poiCanonicalRepository = poiCanonicalRepository;
         this.verticalConnectorStopRepository = verticalConnectorStopRepository;
         this.metadataIntegrator = metadataIntegrator;
@@ -56,8 +57,7 @@ class BuildGraphPersister {
     void persistSuccess(
             UUID buildJobId,
             UUID scanId,
-            java.nio.file.Path rawDbPath,
-            RtabmapGraph graph,
+            Path rawDbPath,
             RtabmapReprocessResult reprocess,
             Optional<ScanMetadata> scanMetadata
     ) {
@@ -67,37 +67,33 @@ class BuildGraphPersister {
         }
         job.markPersisting();
 
-        List<MapNodeEntity> allNodes = new ArrayList<>(graph.nodes());
-        List<MapEdgeEntity> allEdges = new ArrayList<>(graph.edges());
-
-        List<ScanMetadataIntegrator.IntegrationResult> integrations = new ArrayList<>();
-        scanMetadata.ifPresent(metadata -> {
-            ScanMetadataIntegrator.IntegrationResult integration =
-                    metadataIntegrator.integrate(scanId, buildJobId, metadata, allNodes);
-            allNodes.addAll(integration.extraNodes());
-            allEdges.addAll(integration.extraEdges());
-            integrations.add(integration);
-            enrichDeviceInfo(job.getScan(), metadata);
-        });
-
         mapEdgeRepository.deleteByScanId(scanId);
         mapNodeRepository.deleteByScanId(scanId);
-        // map_node를 먼저 flush해 FK 참조(poi_canonical.route_node_id)가 만족되도록 보장
-        mapNodeRepository.saveAllAndFlush(allNodes);
-        mapEdgeRepository.saveAll(allEdges);
+        polygonRepository.deleteByScanId(scanId);
 
-        // map_node flush 완료 후 poi_canonical, vertical_connector_stop 저장
-        for (ScanMetadataIntegrator.IntegrationResult integration : integrations) {
-            poiCanonicalRepository.saveAllAndFlush(integration.pois());
-            verticalConnectorStopRepository.saveAll(integration.stops());
+        int nodeCount = 0;
+        int edgeCount = 0;
+        int polygonCount = 0;
+
+        if (scanMetadata.isPresent()) {
+            ScanMetadata metadata = scanMetadata.get();
+            IntegrationResult result = metadataIntegrator.integrate(scanId, buildJobId, metadata);
+            mapNodeRepository.saveAllAndFlush(result.nodes());
+            mapEdgeRepository.saveAll(result.edges());
+            polygonRepository.saveAll(result.polygons());
+            poiCanonicalRepository.saveAllAndFlush(result.pois());
+            verticalConnectorStopRepository.saveAll(result.stops());
+            enrichDeviceInfo(job.getScan(), metadata);
+            nodeCount = result.nodes().size();
+            edgeCount = result.edges().size();
+            polygonCount = result.polygons().size();
         }
 
         Map<String, Object> counts = new LinkedHashMap<>();
-        counts.put("build_source", reprocess.hasUsableOutput()
-                ? "rtabmap_reprocessed_sqlite"
-                : "rtabmap_node_link_sqlite");
-        counts.put("map_nodes", allNodes.size());
-        counts.put("map_edges", allEdges.size());
+        counts.put("build_source", "scan_metadata_only");
+        counts.put("map_nodes", nodeCount);
+        counts.put("map_edges", edgeCount);
+        counts.put("floor_area_polygons", polygonCount);
         counts.put("metadata_integrated", scanMetadata.isPresent());
         counts.put("rtabmap", Map.of(
                 "db_path", reprocess.effectiveDbPath().toString(),
