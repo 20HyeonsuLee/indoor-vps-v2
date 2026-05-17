@@ -12,6 +12,8 @@ import org.springframework.data.repository.query.Param;
 public interface FloorScanRepository extends JpaRepository<FloorScanEntity, UUID> {
     List<FloorScanEntity> findByFloor_FloorIdOrderByUploadOrderAscCreatedAtAsc(UUID floorId);
 
+    List<FloorScanEntity> findByArea_AreaIdOrderByUploadOrderAscCreatedAtAsc(UUID areaId);
+
     Optional<FloorScanEntity> findByFloor_FloorIdAndFloorScanId(UUID floorId, UUID floorScanId);
 
     Optional<FloorScanEntity> findByFloor_FloorIdAndScan_ScanId(UUID floorId, UUID scanId);

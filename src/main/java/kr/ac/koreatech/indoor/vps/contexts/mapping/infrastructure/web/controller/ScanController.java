@@ -5,6 +5,7 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.FinalizeStreamingScanUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ListScanChunksUseCase;
@@ -82,7 +83,8 @@ public class ScanController {
             @RequestParam(name = "payload", required = false) MultipartFile payload,
             @RequestParam(name = "scan_id", required = false) String scanId,
             @RequestParam(name = "device_info", required = false) String deviceInfo,
-            @RequestParam(name = "force", defaultValue = "false") boolean force
+            @RequestParam(name = "force", defaultValue = "false") boolean force,
+            @RequestParam(name = "areaId", required = false) UUID areaId
     ) {
         MultipartFile upload = file != null ? file : payload;
         if (upload == null || upload.isEmpty()) {
@@ -92,7 +94,7 @@ public class ScanController {
         try {
             byte[] content = readBytes(upload);
             ScanChunkResult response = uploadScanChunkUseCase.execute(
-                    new UploadScanChunkCommand(floorId, content, upload.getOriginalFilename(), scanId, deviceInfo, force)
+                    new UploadScanChunkCommand(floorId, content, upload.getOriginalFilename(), scanId, deviceInfo, force, Optional.ofNullable(areaId))
             );
             fixtureCapture.writeResponse(capture, response);
             return response;
@@ -106,12 +108,14 @@ public class ScanController {
     @ResponseStatus(HttpStatus.CREATED)
     public ScanStartResponse startStreamingScan(
             @PathVariable UUID floorId,
-            @RequestBody(required = false) ScanStartRequest request
+            @RequestBody(required = false) ScanStartRequest request,
+            @RequestParam(name = "areaId", required = false) UUID areaId
     ) {
         StartedStreamingScan started = startStreamingScanUseCase.execute(new StartStreamingScanCommand(
                 floorId,
                 request == null ? null : request.scanId(),
-                request == null ? null : request.deviceInfo()
+                request == null ? null : request.deviceInfo(),
+                Optional.ofNullable(areaId)
         ));
         return new ScanStartResponse(started.scanId(), started.floorId(), started.storagePath(), started.state());
     }
@@ -145,8 +149,11 @@ public class ScanController {
     }
 
     @GetMapping("/floors/{floorId}/scans/chunks")
-    public List<ScanChunkResult> listScanChunks(@PathVariable UUID floorId) {
-        return listScanChunksUseCase.listChunks(floorId);
+    public List<ScanChunkResult> listScanChunks(
+            @PathVariable UUID floorId,
+            @RequestParam(name = "areaId", required = false) UUID areaId
+    ) {
+        return listScanChunksUseCase.listChunks(floorId, Optional.ofNullable(areaId));
     }
 
     @DeleteMapping("/floors/{floorId}/scans/chunks/{chunkId}")
@@ -156,28 +163,44 @@ public class ScanController {
     }
 
     @PostMapping("/floors/{floorId}/scans/merge")
-    public MergedScanResult mergeScans(@PathVariable UUID floorId, @RequestBody MergeScansRequest request) {
-        return mergeScansUseCase.merge(floorId, request.chunkIds());
+    public MergedScanResult mergeScans(
+            @PathVariable UUID floorId,
+            @RequestBody MergeScansRequest request,
+            @RequestParam(name = "areaId", required = false) UUID areaId
+    ) {
+        return mergeScansUseCase.merge(floorId, request.chunkIds(), Optional.ofNullable(areaId));
     }
 
     @GetMapping("/floors/{floorId}/scans/merge/status")
-    public MergedScanResult getMergeStatus(@PathVariable UUID floorId) {
-        return mergeScansUseCase.mergeStatus(floorId);
+    public MergedScanResult getMergeStatus(
+            @PathVariable UUID floorId,
+            @RequestParam(name = "areaId", required = false) UUID areaId
+    ) {
+        return mergeScansUseCase.mergeStatus(floorId, Optional.ofNullable(areaId));
     }
 
     @PostMapping("/floors/{floorId}/process")
-    public ProcessingStatusResult processFloor(@PathVariable UUID floorId) {
-        return processFloorUseCase.process(floorId);
+    public ProcessingStatusResult processFloor(
+            @PathVariable UUID floorId,
+            @RequestParam(name = "areaId", required = false) UUID areaId
+    ) {
+        return processFloorUseCase.process(floorId, Optional.ofNullable(areaId));
     }
 
     @PostMapping("/floors/{floorId}/build")
-    public ProcessingStatusResult buildFloor(@PathVariable UUID floorId) {
-        return processFloorUseCase.process(floorId);
+    public ProcessingStatusResult buildFloor(
+            @PathVariable UUID floorId,
+            @RequestParam(name = "areaId", required = false) UUID areaId
+    ) {
+        return processFloorUseCase.process(floorId, Optional.ofNullable(areaId));
     }
 
     @GetMapping("/floors/{floorId}/process/status")
-    public ProcessingStatusResult getProcessStatus(@PathVariable UUID floorId) {
-        return processFloorUseCase.processStatus(floorId);
+    public ProcessingStatusResult getProcessStatus(
+            @PathVariable UUID floorId,
+            @RequestParam(name = "areaId", required = false) UUID areaId
+    ) {
+        return processFloorUseCase.processStatus(floorId, Optional.ofNullable(areaId));
     }
 
     private static FilePayload toFilePayload(MultipartFile file) {

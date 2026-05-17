@@ -25,9 +25,9 @@ public class GetFloorMapUseCase {
         this.graphQueryFacade = graphQueryFacade;
     }
 
-    public FloorMapResult getFloorMap(UUID floorId) {
+    public FloorMapResult getFloorMap(UUID floorId, Optional<UUID> areaId) {
         FloorEntity floor = floorQuery.requireFloor(floorId);
-        Optional<FloorScanEntity> active = floorQuery.activeScan(floorId);
+        Optional<FloorScanEntity> active = floorQuery.activeScanForArea(floorId, areaId);
         UUID scanId = active.map(scan -> scan.getScan().getScanId()).orElse(null);
         UUID buildJobId = scanId == null ? null : graphQueryFacade.latestBuildJobId(scanId).orElse(null);
         List<MapNodeEntity> nodes = scanId == null ? List.of() : graphQueryFacade.nodeEntities(scanId);

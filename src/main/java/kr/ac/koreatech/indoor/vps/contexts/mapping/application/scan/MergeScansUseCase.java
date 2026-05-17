@@ -2,8 +2,10 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.area.FloorAreaResolver;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
@@ -20,26 +22,28 @@ import org.springframework.transaction.annotation.Transactional;
 public class MergeScansUseCase {
 
     private final FloorQueryService floorService;
+    private final FloorAreaResolver floorAreaResolver;
     private final ScanPersistence scanPersistence;
     private final ScanMergeRunner mergeRunner;
 
     public MergeScansUseCase(
             FloorQueryService floorService,
+            FloorAreaResolver floorAreaResolver,
             ScanPersistence scanPersistence,
             ScanMergeRunner mergeRunner
     ) {
         this.floorService = floorService;
+        this.floorAreaResolver = floorAreaResolver;
         this.scanPersistence = scanPersistence;
         this.mergeRunner = mergeRunner;
     }
 
     @Transactional
-    public MergedScanResult merge(UUID floorId, List<UUID> chunkIds) {
+    public MergedScanResult merge(UUID floorId, List<UUID> chunkIds, Optional<UUID> areaId) {
         floorService.requireFloor(floorId);
-        FloorAreaEntity area = floorService.defaultArea(floorId)
-                .orElseThrow(() -> new ClientApiException(HttpStatus.NOT_FOUND, "DEFAULT_AREA_NOT_FOUND", "floor has no default area"));
+        FloorAreaEntity area = floorAreaResolver.resolve(floorId, areaId);
         if (chunkIds == null || chunkIds.isEmpty()) {
-            return mergeStatus(floorId);
+            return mergeStatus(floorId, areaId);
         }
         List<FloorScanEntity> sources = scanPersistence.findMergeSources(floorId, chunkIds);
         if (sources.isEmpty()) {
@@ -76,11 +80,15 @@ public class MergeScansUseCase {
         return new MergedScanResult(floorId, mergedScanId, "MERGED");
     }
 
-    public MergedScanResult mergeStatus(UUID floorId) {
+    public MergedScanResult mergeStatus(UUID floorId, Optional<UUID> areaId) {
         floorService.requireFloor(floorId);
-        return floorService.activeScan(floorId)
+        return floorService.activeScanForArea(floorId, areaId)
                 .map(scan -> new MergedScanResult(floorId, scan.getScan().getScanId(), "MERGED"))
                 .orElseGet(() -> new MergedScanResult(floorId, null, "IDLE"));
+    }
+
+    public MergedScanResult mergeStatus(UUID floorId) {
+        return mergeStatus(floorId, Optional.empty());
     }
 
     private MergedScanResult activateSingleMerge(UUID floorId, FloorScanEntity target) {

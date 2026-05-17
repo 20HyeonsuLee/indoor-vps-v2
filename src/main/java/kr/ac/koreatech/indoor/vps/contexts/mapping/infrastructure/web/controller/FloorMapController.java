@@ -5,6 +5,7 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFloorMapUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFloorMapUseCase.FloorMapResult;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -35,9 +37,10 @@ public class FloorMapController {
     @GetMapping("/floors/{floorId}/map")
     public ResponseEntity<FloorMapResponse> getFloorMap(
             @PathVariable UUID floorId,
+            @RequestParam(name = "areaId", required = false) UUID areaId,
             @RequestHeader(name = "If-None-Match", required = false) String ifNoneMatch
     ) {
-        FloorMapResult result = getFloorMapUseCase.getFloorMap(floorId);
+        FloorMapResult result = getFloorMapUseCase.getFloorMap(floorId, Optional.ofNullable(areaId));
         String etag = "\"" + result.etag() + "\"";
         if (etag.equals(ifNoneMatch)) {
             return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
