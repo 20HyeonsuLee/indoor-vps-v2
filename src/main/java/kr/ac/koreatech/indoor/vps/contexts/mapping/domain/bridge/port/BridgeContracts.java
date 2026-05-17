@@ -53,4 +53,18 @@ public final class BridgeContracts {
             Map<String, Object> diagnostics
     ) {
     }
+
+    public record BuildSuperpointIndexRequest(
+            String scanId,
+            String dbPath
+    ) {
+    }
+
+    public record BuildSuperpointIndexResponse(
+            String cacheDir,
+            int frameCount,
+            long totalKeypoints,
+            long elapsedMs
+    ) {
+    }
 }

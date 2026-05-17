@@ -14,7 +14,7 @@ from pathlib import Path
 import sys
 
 
-COMMANDS = ("health", "localize", "merge_scan")
+COMMANDS = ("health", "localize", "merge_scan", "build_superpoint_index")
 
 
 class BridgeContractError(ValueError):
@@ -69,6 +69,12 @@ def dispatch(command: str, payload: dict[str, object]) -> int:
             print_json({"ok": True, "command": command})
             return 0
         return merge_scan(payload)
+    if command == "build_superpoint_index":
+        validate_build_superpoint_index(payload)
+        if payload.get("contractOnly") is True:
+            print_json({"ok": True, "command": command})
+            return 0
+        return build_superpoint_index(payload)
     return fail("BRIDGE_UNKNOWN_COMMAND", f"unknown bridge command: {command}", {"commands": list(COMMANDS)})
 
 
@@ -252,6 +258,73 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
         "fileSize": output_db.stat().st_size,
         "diagnostics": result.to_metadata(),
     }
+
+
+def validate_build_superpoint_index(payload: dict[str, object]) -> None:
+    require_string(payload, "scanId")
+    require_string(payload, "dbPath")
+
+
+def build_superpoint_index(payload: dict[str, object]) -> int:
+    import time
+    from pathlib import Path as _Path
+
+    db_path = str(payload["dbPath"])
+    scan_id = str(payload["scanId"])
+    cache_dir_override = payload.get("cacheDir")
+    if cache_dir_override:
+        cache_dir = _Path(str(cache_dir_override))
+    else:
+        cache_dir = _Path(db_path).parent / "superpoint_index"
+
+    backend_path = resolve_legacy_backend_src("build_superpoint_index")
+    prepend_sys_path(backend_path)
+
+    try:
+        import torch
+        from indoor_server.application.slam.superpoint.device import (  # type: ignore
+            resolve_torch_device,
+        )
+        from indoor_server.application.slam.superpoint.map_manager import (  # type: ignore
+            SuperPointLoadedMap,
+        )
+    except Exception as exc:
+        raise BridgeRuntimeError(
+            "BRIDGE_BACKEND_IMPORT_FAILED",
+            str(exc),
+            {"type": type(exc).__name__},
+        ) from exc
+
+    t0 = time.time()
+    try:
+        device = resolve_torch_device()
+        loaded_map = SuperPointLoadedMap(scan_id, db_path, device, cache_dir=cache_dir)
+    except Exception as exc:
+        raise BridgeRuntimeError(
+            "BRIDGE_SUPERPOINT_INDEX_FAILED",
+            str(exc),
+            {"scanId": scan_id, "dbPath": db_path, "type": type(exc).__name__},
+        ) from exc
+
+    elapsed_ms = int((time.time() - t0) * 1000)
+    total_kp = sum(
+        loaded_map.keyframe_feats[nid]["keypoints"].shape[1]
+        for nid in loaded_map.node_ids
+    )
+    cache_bytes = sum(
+        f.stat().st_size
+        for f in cache_dir.iterdir()
+        if f.is_file()
+    ) if cache_dir.exists() else 0
+
+    print_json({
+        "cacheDir": str(cache_dir),
+        "frameCount": len(loaded_map.node_ids),
+        "totalKeypoints": total_kp,
+        "bytes": cache_bytes,
+        "elapsedMs": elapsed_ms,
+    })
+    return 0
 
 
 def load_legacy_merge_dependencies():

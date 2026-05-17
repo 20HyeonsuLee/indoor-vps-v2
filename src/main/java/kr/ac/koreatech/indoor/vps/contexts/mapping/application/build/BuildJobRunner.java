@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader;
@@ -18,6 +20,8 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapRepro
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanMetadataReader;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanMetadataReader.ScanMetadata;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -26,6 +30,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class BuildJobRunner {
+    private static final Logger log = LoggerFactory.getLogger(BuildJobRunner.class);
+
     private final BuildJobRepository buildJobRepository;
     private final ScanIngestRepository scanIngestRepository;
     private final RtabmapGraphReader graphReader;
@@ -34,6 +40,7 @@ public class BuildJobRunner {
     private final IndoorProperties properties;
     private final TransactionTemplate transactionTemplate;
     private final BuildGraphPersister graphPersister;
+    private final PythonBridge pythonBridge;
     private final String workerId = "spring-build-worker-" + UUID.randomUUID();
 
     public BuildJobRunner(
@@ -44,7 +51,8 @@ public class BuildJobRunner {
             ScanMetadataReader metadataReader,
             IndoorProperties properties,
             TransactionTemplate transactionTemplate,
-            BuildGraphPersister graphPersister
+            BuildGraphPersister graphPersister,
+            PythonBridge pythonBridge
     ) {
         this.buildJobRepository = buildJobRepository;
         this.scanIngestRepository = scanIngestRepository;
@@ -54,6 +62,7 @@ public class BuildJobRunner {
         this.properties = properties;
         this.transactionTemplate = transactionTemplate;
         this.graphPersister = graphPersister;
+        this.pythonBridge = pythonBridge;
     }
 
     @Scheduled(fixedDelayString = "${indoor.build-worker.poll-interval-ms:2000}")
@@ -96,6 +105,7 @@ public class BuildJobRunner {
             }
             RtabmapReprocessResult reprocess = reprocessService.reprocess(input.scanId(), input.dbPath());
             Path graphDbPath = reprocess.effectiveDbPath();
+            buildSuperpointIndexQuietly(input.scanId(), graphDbPath);
             validateRtabmapGraph(graphDbPath, input.scanId(), buildJobId);
             Optional<ScanMetadata> metadata = metadataReader.read(metadataDbPath(input.dbPath()));
             transactionTemplate.executeWithoutResult(
@@ -107,6 +117,26 @@ public class BuildJobRunner {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
         } catch (RuntimeException e) {
             markFailure(buildJobId, BuildFailureReason.internal, e.getMessage());
+        }
+    }
+
+    private void buildSuperpointIndexQuietly(UUID scanId, Path dbPath) {
+        if (!properties.getPython().isEnabled()) {
+            log.debug("[SuperPoint] python bridge disabled — skipping index build for scan {}", scanId);
+            return;
+        }
+        try {
+            var response = pythonBridge.buildSuperpointIndex(
+                    new BuildSuperpointIndexRequest(scanId.toString(), dbPath.toAbsolutePath().toString())
+            );
+            log.info(
+                    "[SuperPoint] index built for scan {}: frames={}, kp={}, elapsed={}ms, cacheDir={}",
+                    scanId, response.frameCount(), response.totalKeypoints(),
+                    response.elapsedMs(), response.cacheDir()
+            );
+        } catch (Exception e) {
+            log.warn("[SuperPoint] index build failed for scan {} — localize will rebuild on demand: {}",
+                    scanId, e.getMessage());
         }
     }
 

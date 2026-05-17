@@ -12,6 +12,8 @@ import java.util.Map;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeCommand;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.HealthBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeResponse;
@@ -55,6 +57,11 @@ public class PythonBridgeAdapter implements PythonBridge {
     @Override
     public MergeScanBridgeResponse mergeScan(MergeScanBridgeRequest request) {
         return call(BridgeCommand.MERGE_SCAN, request, MergeScanBridgeResponse.class);
+    }
+
+    @Override
+    public BuildSuperpointIndexResponse buildSuperpointIndex(BuildSuperpointIndexRequest request) {
+        return call(BridgeCommand.BUILD_SUPERPOINT_INDEX, request, BuildSuperpointIndexResponse.class);
     }
 
     private <T> T call(BridgeCommand command, Object payload, Class<T> responseType) {

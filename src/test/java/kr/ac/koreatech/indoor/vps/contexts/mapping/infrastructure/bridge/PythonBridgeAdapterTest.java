@@ -26,7 +26,7 @@ class PythonBridgeAdapterTest {
         JsonNode stdout = objectMapper.readTree(result.stdout());
         assertThat(stdout.path("ok").asBoolean()).isTrue();
         assertThat(stdout.path("commands").valueStream().map(JsonNode::asText).toList())
-                .containsExactly("health", "localize", "merge_scan");
+                .containsExactly("health", "localize", "merge_scan", "build_superpoint_index");
         assertThat(stdout.path("mlDevice").asText()).isEqualTo("cpu");
     }
 
@@ -72,6 +72,21 @@ class PythonBridgeAdapterTest {
         ));
 
         assertThat(merge.exitCode()).isZero();
+    }
+
+    @Test
+    void buildSuperpointIndexValidatesSchema() throws Exception {
+        BridgeResult missing = call("build_superpoint_index", Map.of("scanId", "s1"));
+        assertThat(missing.exitCode()).isEqualTo(2);
+        assertThat(objectMapper.readTree(missing.stderr()).path("error").path("code").asText())
+                .isEqualTo("BRIDGE_VALIDATION_ERROR");
+
+        BridgeResult contractOnly = call("build_superpoint_index", Map.of(
+                "scanId", "s1",
+                "dbPath", "/tmp/rtabmap.db",
+                "contractOnly", true
+        ));
+        assertThat(contractOnly.exitCode()).isZero();
     }
 
     @Test

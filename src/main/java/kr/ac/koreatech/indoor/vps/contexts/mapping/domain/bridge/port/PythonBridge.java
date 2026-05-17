@@ -1,5 +1,7 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port;
 
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.HealthBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeResponse;
@@ -14,4 +16,6 @@ public interface PythonBridge {
     LocalizeBridgeResponse localize(LocalizeBridgeRequest request);
 
     MergeScanBridgeResponse mergeScan(MergeScanBridgeRequest request);
+
+    BuildSuperpointIndexResponse buildSuperpointIndex(BuildSuperpointIndexRequest request);
 }

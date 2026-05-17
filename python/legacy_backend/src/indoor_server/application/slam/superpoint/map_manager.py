@@ -6,12 +6,15 @@ extracts SuperPoint features, and associates them with world-frame
 
 No service-layer files are modified — this is a standalone index.
 """
+import json
 import logging
+import os
 import sqlite3
 import struct
 import threading
 import time
 from collections import OrderedDict
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -189,20 +192,176 @@ def _smart_select_keyframes(
 class SuperPointLoadedMap:
     """SuperPoint feature index for all keyframes in one RTABMap DB."""
 
-    def __init__(self, map_id: str, db_path: str, device: torch.device):
+    def __init__(
+        self,
+        map_id: str,
+        db_path: str,
+        device: torch.device,
+        cache_dir: Path | None = None,
+    ):
         self.map_id = map_id
         self.db_path = db_path
         self.device = device
+        self._cache_dir = cache_dir
 
         self.node_ids: list[int] = []
         # CPU tensors: {'keypoints': (1,N,2), 'descriptors': (1,N,256), 'image_size': (1,2)}
         self.keyframe_feats: dict[int, dict] = {}
         # (N, 3) world 3D per keyframe keypoint; NaN where unavailable
         self.keyframe_world3d: dict[int, np.ndarray] = {}
-        # (K, 256) mean descriptors for global retrieval
+        # (K, 384) DINOv2 global descriptors
         self.global_descs: torch.Tensor | None = None
 
-        self._build_index()
+        if not self._try_load_cache():
+            self._build_index()
+            self._save_cache()
+
+    # ------------------------------------------------------------------
+    # Disk cache (mmap-friendly raw .npy + meta.json)
+    # ------------------------------------------------------------------
+
+    def _current_db_mtime(self) -> float | None:
+        try:
+            return os.path.getmtime(self.db_path)
+        except OSError:
+            return None
+
+    def _try_load_cache(self) -> bool:
+        """Load from disk cache if cache_dir exists and db_mtime matches.
+
+        Returns True when cache was loaded successfully.
+        """
+        if self._cache_dir is None:
+            return False
+        meta_path = self._cache_dir / "meta.json"
+        if not meta_path.exists():
+            return False
+        try:
+            meta = json.loads(meta_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("[SuperPoint] cache meta unreadable: %s — skipping", exc)
+            return False
+
+        current_mtime = self._current_db_mtime()
+        if current_mtime is None or abs(meta.get("db_mtime", -1) - current_mtime) > 1.0:
+            logger.info(
+                "[SuperPoint] map '%s' cache stale (mtime mismatch) — rebuilding",
+                self.map_id,
+            )
+            return False
+
+        required = ["keypoints.npy", "descriptors.npy", "frame_offsets.npy",
+                    "world_points.npy", "global_descriptors.npy"]
+        for fname in required:
+            if not (self._cache_dir / fname).exists():
+                logger.warning("[SuperPoint] cache file missing: %s — rebuilding", fname)
+                return False
+
+        try:
+            t0 = time.time()
+            kps_all = np.load(str(self._cache_dir / "keypoints.npy"), mmap_mode="r")
+            descs_all = np.load(str(self._cache_dir / "descriptors.npy"), mmap_mode="r")
+            offsets = np.load(str(self._cache_dir / "frame_offsets.npy"), mmap_mode="r")
+            world_all = np.load(str(self._cache_dir / "world_points.npy"), mmap_mode="r")
+            global_descs_arr = np.load(
+                str(self._cache_dir / "global_descriptors.npy"), mmap_mode="r"
+            )
+        except Exception as exc:
+            logger.warning("[SuperPoint] cache load failed: %s — rebuilding", exc)
+            return False
+
+        frame_ids: list[int] = [int(x) for x in meta["frame_ids"]]
+        self.node_ids = frame_ids
+
+        for i, nid in enumerate(frame_ids):
+            start = int(offsets[i])
+            end = int(offsets[i + 1])
+            kps = np.array(kps_all[start:end], dtype=np.float32)
+            descs = np.array(descs_all[start:end], dtype=np.float32)
+            img_size = meta["image_sizes"][i]
+            self.keyframe_feats[nid] = {
+                "keypoints": torch.from_numpy(kps).unsqueeze(0),
+                "descriptors": torch.from_numpy(descs).unsqueeze(0),
+                "image_size": torch.tensor([[img_size[0], img_size[1]]], dtype=torch.int),
+            }
+            self.keyframe_world3d[nid] = np.array(world_all[start:end], dtype=np.float32)
+
+        if len(global_descs_arr):
+            self.global_descs = torch.from_numpy(np.array(global_descs_arr, dtype=np.float32))
+
+        logger.info(
+            "[SuperPoint] map '%s' loaded from disk cache in %.2fs: %d frames",
+            self.map_id,
+            time.time() - t0,
+            len(frame_ids),
+        )
+        return True
+
+    def _save_cache(self) -> None:
+        """Persist feature index to disk as raw .npy + meta.json."""
+        if self._cache_dir is None or not self.node_ids:
+            return
+        try:
+            self._cache_dir.mkdir(parents=True, exist_ok=True)
+            kps_list: list[np.ndarray] = []
+            descs_list: list[np.ndarray] = []
+            world_list: list[np.ndarray] = []
+            offsets: list[int] = [0]
+            image_sizes: list[list[int]] = []
+
+            for nid in self.node_ids:
+                feats = self.keyframe_feats[nid]
+                kps = feats["keypoints"][0].numpy()        # (N, 2)
+                descs = feats["descriptors"][0].numpy()    # (N, 256)
+                w3d = self.keyframe_world3d[nid]           # (N, 3)
+                kps_list.append(kps)
+                descs_list.append(descs)
+                world_list.append(w3d)
+                offsets.append(offsets[-1] + len(kps))
+                sz = feats.get("image_size")
+                if sz is not None:
+                    image_sizes.append(sz[0].tolist())
+                else:
+                    image_sizes.append([0, 0])
+
+            np.save(str(self._cache_dir / "keypoints.npy"), np.concatenate(kps_list, axis=0))
+            np.save(str(self._cache_dir / "descriptors.npy"), np.concatenate(descs_list, axis=0))
+            np.save(str(self._cache_dir / "frame_offsets.npy"), np.array(offsets, dtype=np.int64))
+            np.save(str(self._cache_dir / "world_points.npy"), np.concatenate(world_list, axis=0))
+
+            if self.global_descs is not None:
+                np.save(
+                    str(self._cache_dir / "global_descriptors.npy"),
+                    self.global_descs.numpy(),
+                )
+            else:
+                np.save(
+                    str(self._cache_dir / "global_descriptors.npy"),
+                    np.empty((0, 384), dtype=np.float32),
+                )
+
+            meta = {
+                "map_id": self.map_id,
+                "db_path": self.db_path,
+                "db_mtime": self._current_db_mtime(),
+                "frame_ids": self.node_ids,
+                "image_sizes": image_sizes,
+                "total_keypoints": int(offsets[-1]),
+            }
+            (self._cache_dir / "meta.json").write_text(json.dumps(meta))
+            logger.info(
+                "[SuperPoint] map '%s' cache saved to %s (%d frames, %d kp)",
+                self.map_id,
+                self._cache_dir,
+                len(self.node_ids),
+                offsets[-1],
+            )
+        except Exception as exc:
+            logger.warning("[SuperPoint] cache save failed: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Index build
+    # ------------------------------------------------------------------
 
     def _build_index(self):
         from lightglue import SuperPoint
@@ -659,7 +818,6 @@ class SuperPointMapManager:
                     )
                     del self._maps[map_id]
                 else:
-                    import os
                     current_mtime = os.path.getmtime(cached.db_path) if cached.db_path else None
                     if cached_mtime is not None and current_mtime != cached_mtime:
                         logger.info(
@@ -687,9 +845,9 @@ class SuperPointMapManager:
                     self._maps.move_to_end(map_id)
                     return cached
 
-            m = SuperPointLoadedMap(map_id, db_path, self._device)
+            cache_dir = Path(db_path).parent / "superpoint_index"
+            m = SuperPointLoadedMap(map_id, db_path, self._device, cache_dir=cache_dir)
             try:
-                import os
                 m._db_mtime = os.path.getmtime(db_path)
             except Exception:
                 m._db_mtime = None
