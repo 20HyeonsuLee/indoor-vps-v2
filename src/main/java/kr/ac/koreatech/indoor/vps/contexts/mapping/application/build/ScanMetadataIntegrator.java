@@ -50,6 +50,7 @@ class ScanMetadataIntegrator {
     private final VerticalConnectorRepository verticalConnectorRepository;
     private final VerticalConnectorStopRepository verticalConnectorStopRepository;
     private final GeometryFactory geometryFactory = new GeometryFactory();
+    private final EdgeSnapper edgeSnapper = new EdgeSnapper(geometryFactory);
 
     ScanMetadataIntegrator(
             BuildingRepository buildingRepository,
@@ -76,6 +77,8 @@ class ScanMetadataIntegrator {
                 scanId, buildJobId, metadata.branchMarks(), nodes);
 
         buildBranchEdges(scanId, buildJobId, metadata.branchEdges(), corridorById, edges);
+
+        edgeSnapper.snap(scanId, buildJobId, corridorById, edges, nodes);
 
         buildPolygons(scanId, buildJobId, metadata.branchMarks(), metadata.branchEdges(),
                 session, polygons);
