@@ -35,9 +35,9 @@ public class ProcessFloorUseCase {
     }
 
     @Transactional
-    public ProcessingStatusResult process(UUID floorId) {
+    public ProcessingStatusResult process(UUID floorId, Optional<UUID> areaId) {
         floorService.requireFloor(floorId);
-        FloorScanEntity active = floorService.activeScan(floorId)
+        FloorScanEntity active = floorService.activeScanForArea(floorId, areaId)
                 .orElseThrow(() -> new ClientApiException(HttpStatus.CONFLICT, "ACTIVE_SCAN_NOT_FOUND", "floor has no active scan"));
         ScanIngestEntity scan = active.getScan();
         BuildJobEntity job = buildJobRepository.saveAndFlush(new BuildJobEntity(scan));
@@ -47,9 +47,9 @@ public class ProcessFloorUseCase {
         return new ProcessingStatusResult(floorId, scan.getScanId(), job.getBuildJobId(), "QUEUED", 0.0, null);
     }
 
-    public ProcessingStatusResult processStatus(UUID floorId) {
+    public ProcessingStatusResult processStatus(UUID floorId, Optional<UUID> areaId) {
         floorService.requireFloor(floorId);
-        Optional<FloorScanEntity> active = floorService.activeScan(floorId);
+        Optional<FloorScanEntity> active = floorService.activeScanForArea(floorId, areaId);
         if (active.isEmpty()) {
             return new ProcessingStatusResult(floorId, null, null, "IDLE", null, null);
         }

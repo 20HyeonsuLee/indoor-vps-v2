@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.area.FloorAreaResolver;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
@@ -24,15 +25,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class UploadScanChunkUseCase {
 
     private final FloorQueryService floorService;
+    private final FloorAreaResolver floorAreaResolver;
     private final ScanArchiveStorage scanArchiveStorage;
     private final ScanPersistence scanPersistence;
 
     public UploadScanChunkUseCase(
             FloorQueryService floorService,
+            FloorAreaResolver floorAreaResolver,
             ScanArchiveStorage scanArchiveStorage,
             ScanPersistence scanPersistence
     ) {
         this.floorService = floorService;
+        this.floorAreaResolver = floorAreaResolver;
         this.scanArchiveStorage = scanArchiveStorage;
         this.scanPersistence = scanPersistence;
     }
@@ -40,8 +44,7 @@ public class UploadScanChunkUseCase {
     @Transactional
     public ScanChunkResult execute(UploadScanChunkCommand command) {
         floorService.requireFloor(command.floorId());
-        FloorAreaEntity area = floorService.defaultArea(command.floorId())
-                .orElseThrow(() -> new ClientApiException(HttpStatus.NOT_FOUND, "DEFAULT_AREA_NOT_FOUND", "floor has no default area"));
+        FloorAreaEntity area = floorAreaResolver.resolve(command.floorId(), command.areaId());
         UUID scanId = scanArchiveStorage.resolveScanId(
                 command.fileContent(), command.originalFilename(),
                 parseOptional(command.scanIdText()).orElse(null)

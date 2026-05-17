@@ -96,6 +96,10 @@ public class ScanPersistence {
         return floorScanRepository.findByFloor_FloorIdOrderByUploadOrderAscCreatedAtAsc(floorId);
     }
 
+    public List<FloorScanEntity> findByAreaOrdered(UUID areaId) {
+        return floorScanRepository.findByArea_AreaIdOrderByUploadOrderAscCreatedAtAsc(areaId);
+    }
+
     public Optional<FloorScanEntity> findChunk(UUID floorId, UUID chunkId) {
         return floorScanRepository.findByFloor_FloorIdAndFloorScanId(floorId, chunkId);
     }

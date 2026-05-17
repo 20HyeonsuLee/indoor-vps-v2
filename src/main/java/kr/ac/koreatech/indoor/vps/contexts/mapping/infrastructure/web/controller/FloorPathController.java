@@ -3,12 +3,14 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controlle
 import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.MapDtos.*;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetGraphUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetGraphUseCase.FloorPathResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -24,8 +26,11 @@ public class FloorPathController {
     }
 
     @GetMapping("/floors/{floorId}/path")
-    public FloorPathResponse getFloorPath(@PathVariable UUID floorId) {
-        FloorPathResult result = getGraphUseCase.getFloorPath(floorId);
+    public FloorPathResponse getFloorPath(
+            @PathVariable UUID floorId,
+            @RequestParam(name = "areaId", required = false) UUID areaId
+    ) {
+        FloorPathResult result = getGraphUseCase.getFloorPath(floorId, Optional.ofNullable(areaId));
         return new FloorPathResponse(
                 result.floorId(),
                 result.scanId(),
