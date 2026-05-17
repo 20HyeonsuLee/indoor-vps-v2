@@ -23,6 +23,10 @@ public class FloorScanEntity {
     private FloorEntity floor;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "area_id", nullable = false)
+    private FloorAreaEntity area;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "scan_id", nullable = false)
     private ScanIngestEntity scan;
 
@@ -47,8 +51,9 @@ public class FloorScanEntity {
     protected FloorScanEntity() {
     }
 
-    public FloorScanEntity(FloorEntity floor, ScanIngestEntity scan, String fileName, Long fileSize, int uploadOrder) {
-        this.floor = floor;
+    public FloorScanEntity(FloorAreaEntity area, ScanIngestEntity scan, String fileName, Long fileSize, int uploadOrder) {
+        this.area = area;
+        this.floor = area.getFloor();
         this.scan = scan;
         this.fileName = fileName;
         this.fileSize = fileSize;
@@ -67,6 +72,10 @@ public class FloorScanEntity {
 
     public UUID getFloorScanId() {
         return floorScanId;
+    }
+
+    public FloorAreaEntity getArea() {
+        return area;
     }
 
     public FloorEntity getFloor() {

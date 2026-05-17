@@ -18,6 +18,8 @@ public interface FloorScanRepository extends JpaRepository<FloorScanEntity, UUID
 
     Optional<FloorScanEntity> findFirstByFloor_FloorIdAndActiveTrueOrderByCreatedAtDesc(UUID floorId);
 
+    Optional<FloorScanEntity> findFirstByArea_AreaIdAndActiveTrueOrderByCreatedAtDesc(UUID areaId);
+
     boolean existsByScan_ScanId(UUID scanId);
 
     @Query("""

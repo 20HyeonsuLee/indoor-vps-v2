@@ -6,6 +6,7 @@ public record RouteNode(
         UUID id,
         NodeType type,
         Point3 position,
-        String label
+        String label,
+        UUID areaId
 ) {
 }

@@ -45,14 +45,18 @@ public class ScanIngestEntity {
     @Column(name = "build_job_id")
     private UUID buildJobId;
 
+    @Column(name = "area_id", nullable = false)
+    private UUID areaId;
+
     protected ScanIngestEntity() {
     }
 
-    public ScanIngestEntity(UUID scanId, String payloadSha256, String storagePath, Map<String, Object> deviceInfo) {
+    public ScanIngestEntity(UUID scanId, String payloadSha256, String storagePath, Map<String, Object> deviceInfo, UUID areaId) {
         this.scanId = scanId;
         this.payloadSha256 = payloadSha256;
         this.storagePath = storagePath;
         this.deviceInfo = deviceInfo;
+        this.areaId = areaId;
     }
 
     @PrePersist
@@ -68,6 +72,10 @@ public class ScanIngestEntity {
 
     public String getPayloadSha256() {
         return payloadSha256;
+    }
+
+    public UUID getAreaId() {
+        return areaId;
     }
 
     public void replacePayload(String payloadSha256, String storagePath, Map<String, Object> deviceInfo) {

@@ -4,8 +4,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorAreaRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapNodeRepository;
@@ -19,15 +21,18 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class FloorQueryService {
     private final FloorRepository floorRepository;
+    private final FloorAreaRepository floorAreaRepository;
     private final FloorScanRepository floorScanRepository;
     private final MapNodeRepository mapNodeRepository;
 
     public FloorQueryService(
             FloorRepository floorRepository,
+            FloorAreaRepository floorAreaRepository,
             FloorScanRepository floorScanRepository,
             MapNodeRepository mapNodeRepository
     ) {
         this.floorRepository = floorRepository;
+        this.floorAreaRepository = floorAreaRepository;
         this.floorScanRepository = floorScanRepository;
         this.mapNodeRepository = mapNodeRepository;
     }
@@ -37,8 +42,14 @@ public class FloorQueryService {
                 .orElseThrow(() -> new ClientApiException(HttpStatus.NOT_FOUND, "FLOOR_NOT_FOUND", "floor not found"));
     }
 
+    public Optional<FloorAreaEntity> defaultArea(UUID floorId) {
+        return floorAreaRepository.findByFloor_FloorIdAndIsDefaultTrue(floorId);
+    }
+
     public Optional<FloorScanEntity> activeScan(UUID floorId) {
-        return floorScanRepository.findFirstByFloor_FloorIdAndActiveTrueOrderByCreatedAtDesc(floorId);
+        return defaultArea(floorId)
+                .flatMap(area -> floorScanRepository.findFirstByArea_AreaIdAndActiveTrueOrderByCreatedAtDesc(area.getAreaId()))
+                .or(() -> floorScanRepository.findFirstByFloor_FloorIdAndActiveTrueOrderByCreatedAtDesc(floorId));
     }
 
     public FloorResult getFloor(UUID floorId) {

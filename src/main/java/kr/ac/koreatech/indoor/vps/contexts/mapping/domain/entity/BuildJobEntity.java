@@ -75,11 +75,15 @@ public class BuildJobEntity {
     @Column(name = "attempt_count", nullable = false)
     private int attemptCount;
 
+    @Column(name = "area_id", nullable = false)
+    private UUID areaId;
+
     protected BuildJobEntity() {
     }
 
     public BuildJobEntity(ScanIngestEntity scan) {
         this.scan = scan;
+        this.areaId = scan.getAreaId();
     }
 
     @PrePersist
@@ -98,6 +102,10 @@ public class BuildJobEntity {
 
     public ScanIngestEntity getScan() {
         return scan;
+    }
+
+    public UUID getAreaId() {
+        return areaId;
     }
 
     public BuildState getState() {

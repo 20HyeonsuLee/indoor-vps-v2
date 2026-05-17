@@ -12,6 +12,7 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.build.ScanMetadat
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.EdgeType;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.NodeType;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildingRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorAreaRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.VerticalConnectorRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.VerticalConnectorStopRepository;
@@ -33,15 +34,18 @@ class ScanMetadataIntegratorTest {
     void setUp() {
         BuildingRepository buildingRepository = mock(BuildingRepository.class);
         FloorRepository floorRepository = mock(FloorRepository.class);
+        FloorAreaRepository floorAreaRepository = mock(FloorAreaRepository.class);
         VerticalConnectorRepository verticalConnectorRepository = mock(VerticalConnectorRepository.class);
         VerticalConnectorStopRepository verticalConnectorStopRepository = mock(VerticalConnectorStopRepository.class);
 
         when(buildingRepository.findById(org.mockito.ArgumentMatchers.any())).thenReturn(Optional.empty());
         when(floorRepository.findById(org.mockito.ArgumentMatchers.any())).thenReturn(Optional.empty());
+        when(floorAreaRepository.findById(org.mockito.ArgumentMatchers.any())).thenReturn(Optional.empty());
 
         integrator = new ScanMetadataIntegrator(
                 buildingRepository,
                 floorRepository,
+                floorAreaRepository,
                 verticalConnectorRepository,
                 verticalConnectorStopRepository
         );
@@ -66,7 +70,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         assertThat(result.nodes()).hasSize(2);
         assertThat(result.nodes()).allMatch(n -> n.getNodeType() == NodeType.corridor);
@@ -94,7 +98,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         assertThat(result.nodes()).isEmpty();
         assertThat(result.polygons()).hasSize(1);
@@ -121,7 +125,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         assertThat(result.edges()).hasSize(1);
         assertThat(result.edges().getFirst().getEdgeType()).isEqualTo(EdgeType.rtabmap_link);
@@ -147,7 +151,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         assertThat(result.edges()).isEmpty();
     }
@@ -170,7 +174,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         long corridorNodes = result.nodes().stream()
                 .filter(n -> n.getNodeType() == NodeType.corridor).count();
@@ -201,7 +205,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         assertThat(result.edges()).hasSize(1);
         assertThat(result.edges().getFirst().getEdgeType()).isEqualTo(EdgeType.poi_spur);
@@ -216,7 +220,7 @@ class ScanMetadataIntegratorTest {
         ScanMetadata metadata = new ScanMetadata(
                 session, List.of(), List.of(), List.of(), List.of(), List.of());
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         assertThat(result.nodes()).isEmpty();
         assertThat(result.edges()).isEmpty();
@@ -255,7 +259,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         long junctionNodes = result.nodes().stream()
                 .filter(n -> n.getNodeType() == NodeType.junction).count();
@@ -307,7 +311,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         // junction 없어야 함 (endpoint 직접 연결)
         assertThat(result.nodes().stream()
@@ -339,7 +343,7 @@ class ScanMetadataIntegratorTest {
                 List.of()
         );
 
-        IntegrationResult result = integrator.integrate(scanId, buildJobId, metadata);
+        IntegrationResult result = integrator.integrate(scanId, buildJobId, UUID.randomUUID(), metadata);
 
         assertThat(result.nodes()).hasSize(2);
         assertThat(result.nodes()).allMatch(n -> n.getNodeType() == NodeType.corridor);

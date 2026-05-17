@@ -77,7 +77,7 @@ class BuildGraphPersister {
 
         if (scanMetadata.isPresent()) {
             ScanMetadata metadata = scanMetadata.get();
-            IntegrationResult result = metadataIntegrator.integrate(scanId, buildJobId, metadata);
+            IntegrationResult result = metadataIntegrator.integrate(scanId, buildJobId, job.getAreaId(), metadata);
             mapNodeRepository.saveAllAndFlush(result.nodes());
             mapEdgeRepository.saveAll(result.edges());
             polygonRepository.saveAll(result.polygons());

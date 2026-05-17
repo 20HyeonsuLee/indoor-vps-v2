@@ -20,7 +20,8 @@ public class RouteGraphMapper {
                                 NavigationGeometry.y(node.getGeom()),
                                 NavigationGeometry.z(node.getGeom())
                         ),
-                        node.getLabel()
+                        node.getLabel(),
+                        node.getAreaId()
                 ))
                 .toList();
     }

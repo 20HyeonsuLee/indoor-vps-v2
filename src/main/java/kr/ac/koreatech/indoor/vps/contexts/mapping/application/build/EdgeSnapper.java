@@ -37,6 +37,7 @@ class EdgeSnapper {
     void snap(
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             Map<Long, MapNodeEntity> corridorById,
             List<MapEdgeEntity> edges,
             List<MapNodeEntity> nodes
@@ -55,7 +56,7 @@ class EdgeSnapper {
                 .toList();
 
         for (MapNodeEntity corridor : isolated) {
-            snapSingle(scanId, buildJobId, corridor, sequentialEdges, edges, nodes);
+            snapSingle(scanId, buildJobId, areaId, corridor, sequentialEdges, edges, nodes);
         }
     }
 
@@ -71,6 +72,7 @@ class EdgeSnapper {
     private void snapSingle(
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             MapNodeEntity corridor,
             List<MapEdgeEntity> sequentialEdges,
             List<MapEdgeEntity> edges,
@@ -87,15 +89,15 @@ class EdgeSnapper {
         MapEdgeEntity targetEdge = best.edge();
 
         if (t > EPSILON && t < 1.0 - EPSILON) {
-            splitAndConnect(scanId, buildJobId, corridor, c, foot, t, targetEdge, edges, nodes);
+            splitAndConnect(scanId, buildJobId, areaId, corridor, c, foot, t, targetEdge, edges, nodes);
         } else if (t <= EPSILON) {
             UUID endpointId = targetEdge.getFromNodeId();
             Point3 endpointPos = findNodePos(endpointId, nodes, sequentialEdges);
-            edges.add(snapEdge(scanId, buildJobId, corridor.getNodeId(), endpointId, c, endpointPos));
+            edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), endpointId, c, endpointPos));
         } else {
             UUID endpointId = targetEdge.getToNodeId();
             Point3 endpointPos = findNodePos(endpointId, nodes, sequentialEdges);
-            edges.add(snapEdge(scanId, buildJobId, corridor.getNodeId(), endpointId, c, endpointPos));
+            edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), endpointId, c, endpointPos));
         }
     }
 
@@ -153,6 +155,7 @@ class EdgeSnapper {
     private void splitAndConnect(
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             MapNodeEntity corridor,
             Point3 c,
             Point3 foot,
@@ -164,7 +167,7 @@ class EdgeSnapper {
         UUID junctionId = deterministicUuid(
                 "junction:" + scanId + ":" + targetEdge.getEdgeId() + ":" + corridor.getNodeId());
         MapNodeEntity junction = MapNodeEntity.create(
-                junctionId, scanId, buildJobId, NodeType.junction,
+                junctionId, scanId, buildJobId, areaId, NodeType.junction,
                 geometryFactory.createPoint(new Coordinate(foot.x(), foot.y(), foot.z())),
                 null);
         nodes.add(junction);
@@ -174,15 +177,15 @@ class EdgeSnapper {
         double totalLen = targetEdge.getLengthM();
 
         edges.remove(targetEdge);
-        edges.add(seqEdge(scanId, buildJobId,
+        edges.add(seqEdge(scanId, buildJobId, areaId,
                 "split-a:" + targetEdge.getEdgeId(),
                 fromId, junctionId, foot,
                 findNodeCenter(fromId, nodes), t * totalLen));
-        edges.add(seqEdge(scanId, buildJobId,
+        edges.add(seqEdge(scanId, buildJobId, areaId,
                 "split-b:" + targetEdge.getEdgeId(),
                 junctionId, toId, findNodeCenter(toId, nodes),
                 foot, (1.0 - t) * totalLen));
-        edges.add(snapEdge(scanId, buildJobId, corridor.getNodeId(), junctionId, c, foot));
+        edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), junctionId, c, foot));
     }
 
     private Point3 findNodeCenter(UUID nodeId, List<MapNodeEntity> nodes) {
@@ -197,6 +200,7 @@ class EdgeSnapper {
     private MapEdgeEntity seqEdge(
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             String key,
             UUID fromId,
             UUID toId,
@@ -210,6 +214,7 @@ class EdgeSnapper {
                 deterministicUuid(key + ":" + scanId),
                 scanId,
                 buildJobId,
+                areaId,
                 fromId,
                 toId,
                 EdgeType.rtabmap_link,
@@ -221,6 +226,7 @@ class EdgeSnapper {
     private MapEdgeEntity snapEdge(
             UUID scanId,
             UUID buildJobId,
+            UUID areaId,
             UUID fromId,
             UUID toId,
             Point3 fromPos,
@@ -232,6 +238,7 @@ class EdgeSnapper {
                 deterministicUuid("snap:" + scanId + ":" + fromId + ":" + toId),
                 scanId,
                 buildJobId,
+                areaId,
                 fromId,
                 toId,
                 EdgeType.rtabmap_link,
