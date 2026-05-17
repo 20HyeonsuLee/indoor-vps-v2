@@ -64,8 +64,8 @@ public class FloorMapResponseMapper {
     public Map<String, Object> edgeMap(MapEdgeEntity edge) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", edge.getEdgeId());
-        result.put("fromId", edge.getFromNodeId());
-        result.put("toId", edge.getToNodeId());
+        result.put("fromNodeId", edge.getFromNodeId());
+        result.put("toNodeId", edge.getToNodeId());
         result.put("lengthM", edge.getLengthM());
         result.put("type", edge.getEdgeType().name());
         return result;

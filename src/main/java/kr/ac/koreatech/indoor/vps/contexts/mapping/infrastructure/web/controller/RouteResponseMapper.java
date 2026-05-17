@@ -25,8 +25,8 @@ public class RouteResponseMapper {
     public Map<String, Object> edgeMap(RouteEdge edge) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", edge.id());
-        result.put("fromId", edge.fromId());
-        result.put("toId", edge.toId());
+        result.put("fromNodeId", edge.fromId());
+        result.put("toNodeId", edge.toId());
         result.put("lengthM", edge.lengthM());
         result.put("type", edge.type().name());
         return result;

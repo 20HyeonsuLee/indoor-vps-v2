@@ -50,6 +50,9 @@ Feature: 업로드한 실내 스캔으로 길찾기 가능한 층 지도를 만�
     And param to = scan.endNodeId
     When method get
     Then status 200
-    And match response.totalDistance == 5.0
+    And match response.totalLengthM == 5.0
+    And match response.nodeCount == 2
     And match response.nodes == '#[2]'
     And match response.edges == '#[1]'
+    And match response.nodes[0] == '#string'
+    And match response.edges[0] == '#string'

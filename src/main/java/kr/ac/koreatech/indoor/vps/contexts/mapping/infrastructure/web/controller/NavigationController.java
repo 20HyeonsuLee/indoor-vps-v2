@@ -45,9 +45,10 @@ public class NavigationController {
         response.put("scanId", result.scanId());
         response.put("from", result.fromNode());
         response.put("to", result.toNode());
-        response.put("totalDistance", result.totalDistance());
-        response.put("nodes", result.nodes().stream().map(responseMapper::nodeMap).toList());
-        response.put("edges", result.edges().stream().map(responseMapper::edgeMap).toList());
+        response.put("totalLengthM", result.totalDistance());
+        response.put("nodeCount", result.nodes().size());
+        response.put("nodes", result.nodes().stream().map(n -> n.id().toString()).toList());
+        response.put("edges", result.edges().stream().map(e -> e.id().toString()).toList());
         return response;
     }
 

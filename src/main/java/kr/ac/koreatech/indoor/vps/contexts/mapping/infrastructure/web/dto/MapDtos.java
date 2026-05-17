@@ -51,7 +51,7 @@ public final class MapDtos {
     ) {
     }
 
-    public record FloorMapEdge(UUID id, UUID fromId, UUID toId, double lengthM, String type) {
+    public record FloorMapEdge(UUID id, UUID fromNodeId, UUID toNodeId, double lengthM, String type) {
     }
 
     public record FloorMapResponse(
