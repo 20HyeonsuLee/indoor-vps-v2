@@ -21,6 +21,7 @@ public final class BridgeContracts {
 
     public record FloorMapBridgeRef(
             String floorId,
+            String areaId,
             String floorName,
             int level,
             String filePath
@@ -30,10 +31,10 @@ public final class BridgeContracts {
     public record LocalizeBridgeResponse(
             Map<String, Object> pose,
             double confidence,
-            String mapId,
             int numMatches,
             int matchedImageIndex,
             String floorId,
+            String areaId,
             int floorLevel
     ) {
     }
@@ -64,6 +65,7 @@ public final class BridgeContracts {
             String cacheDir,
             int frameCount,
             long totalKeypoints,
+            long bytes,
             long elapsedMs
     ) {
     }

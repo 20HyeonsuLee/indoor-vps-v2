@@ -42,7 +42,7 @@ public class FloorAreaEntity {
         FloorAreaEntity area = new FloorAreaEntity();
         area.floor = floor;
         area.areaIndex = 0;
-        area.label = "Area 1";
+        area.label = "기본 구역";
         area.isDefault = true;
         return area;
     }

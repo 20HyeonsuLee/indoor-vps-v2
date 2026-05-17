@@ -46,16 +46,20 @@ public class FloorQueryService {
         return floorAreaRepository.findByFloor_FloorIdAndIsDefaultTrue(floorId);
     }
 
+    public Optional<FloorAreaEntity> area(UUID areaId) {
+        return floorAreaRepository.findById(areaId);
+    }
+
     public Optional<FloorScanEntity> activeScan(UUID floorId) {
         return defaultArea(floorId)
-                .flatMap(area -> floorScanRepository.findFirstByArea_AreaIdAndActiveTrueOrderByCreatedAtDesc(area.getAreaId()))
-                .or(() -> floorScanRepository.findFirstByFloor_FloorIdAndActiveTrueOrderByCreatedAtDesc(floorId));
+                .flatMap(area -> floorScanRepository.findFirstByArea_AreaIdAndActiveTrueOrderByCreatedAtDesc(area.getAreaId()));
     }
 
     public Optional<FloorScanEntity> activeScanForArea(UUID floorId, Optional<UUID> areaId) {
-        return areaId
-                .flatMap(id -> floorScanRepository.findFirstByArea_AreaIdAndActiveTrueOrderByCreatedAtDesc(id))
-                .or(() -> activeScan(floorId));
+        if (areaId.isEmpty()) {
+            return activeScan(floorId);
+        }
+        return floorScanRepository.findFirstByArea_AreaIdAndActiveTrueOrderByCreatedAtDesc(areaId.get());
     }
 
     public FloorResult getFloor(UUID floorId) {

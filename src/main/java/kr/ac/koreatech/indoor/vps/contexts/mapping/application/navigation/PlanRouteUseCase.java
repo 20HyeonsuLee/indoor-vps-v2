@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.BuildingRouteGraphProvider.CompositeGraph;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.PathStep;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.RoutePosition;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PoiRouteTargetResolver.PoiRouteTarget;
@@ -24,15 +25,18 @@ public class PlanRouteUseCase {
     private final NavigationQueryContext queryContext;
     private final NavigationGraphService graphService;
     private final GraphQueryFacade graphQueryFacade;
+    private final BuildingRouteGraphProvider buildingRouteGraphProvider;
 
     public PlanRouteUseCase(
             NavigationQueryContext queryContext,
             NavigationGraphService graphService,
-            GraphQueryFacade graphQueryFacade
+            GraphQueryFacade graphQueryFacade,
+            BuildingRouteGraphProvider buildingRouteGraphProvider
     ) {
         this.queryContext = queryContext;
         this.graphService = graphService;
         this.graphQueryFacade = graphQueryFacade;
+        this.buildingRouteGraphProvider = buildingRouteGraphProvider;
     }
 
     public PathfindingResult pathfinding(UUID buildingId, PathfindingCommand command) {
@@ -58,26 +62,27 @@ public class PlanRouteUseCase {
 
         List<PathStep> steps = new ArrayList<>();
         steps.add(new PathStep(1, command.startFloorLevel(), start, "Start", null));
-        if (command.startScanId() != null && target.routeNodeId() != null) {
-            List<RouteNode> routeNodes = graphQueryFacade.routeNodes(command.startScanId());
-            List<RouteEdge> routeEdges = graphQueryFacade.routeEdges(command.startScanId());
+        if (target.routeNodeId() != null) {
+            CompositeGraph graph = buildingRouteGraphProvider.build(buildingId);
             UUID nearestNode = graphService.nearestNode(
-                    routeNodes,
+                    graph.nodes(),
                     new Point3(command.startX(), command.startY(), command.startZ())
             );
             if (nearestNode != null) {
-                RouteResult route = graphService.routeBetween(routeNodes, routeEdges, nearestNode, target.routeNodeId());
+                RouteResult route = graphService.routeBetween(graph.nodes(), graph.edges(), nearestNode, target.routeNodeId());
                 if (!route.nodes().isEmpty()) {
                     int stepNumber = 2;
                     for (RouteNode node : route.nodes()) {
+                        Integer nodeLevel = graph.floorLevelOf(node.id());
+                        int stepLevel = nodeLevel != null ? nodeLevel : target.floorLevel();
                         steps.add(new PathStep(
                                 stepNumber++,
-                                target.floorLevel(),
+                                stepLevel,
                                 new RoutePosition(
                                         node.position().x(),
                                         node.position().y(),
                                         node.position().z(),
-                                        target.floorLevel()
+                                        stepLevel
                                 ),
                                 node.label() == null ? "Continue" : node.label(),
                                 node.id()
@@ -113,7 +118,7 @@ public class PlanRouteUseCase {
 
     public FloorRouteResult floorRoute(FloorRouteCommand command) {
         queryContext.requireFloor(command.floorId());
-        Optional<FloorScanEntity> active = queryContext.activeScan(command.floorId());
+        Optional<FloorScanEntity> active = queryContext.activeScanForArea(command.floorId(), command.areaId());
         if (active.isEmpty()) {
             return new FloorRouteResult(command.floorId(), null, command.fromNode(), command.toNode(), 0.0, List.of(), List.of());
         }

@@ -47,13 +47,13 @@ public class StreamingScanStorageAdapter implements StreamingScanStorage {
     }
 
     @Override
-    public StartedStreamingScan start(UUID floorId, UUID scanId, Map<String, Object> deviceInfo) {
+    public StartedStreamingScan start(UUID floorId, UUID areaId, UUID scanId, Map<String, Object> deviceInfo) {
         try {
             Files.createDirectories(framesDir(scanId));
             Files.createDirectories(linksDir(scanId));
             RtabmapDbInitializer.initialize(rtabmapDbPath(scanId));
-            stateWriter.writeState(statePath(scanId), floorId, scanId, storagePath(scanId), deviceInfo, "STARTED", 0, 0, null);
-            return new StartedStreamingScan(scanId, floorId, storagePath(scanId), "STARTED");
+            stateWriter.writeState(statePath(scanId), floorId, areaId, scanId, storagePath(scanId), deviceInfo, "STARTED", 0, 0, null);
+            return new StartedStreamingScan(scanId, floorId, areaId, storagePath(scanId), "STARTED");
         } catch (IOException | SQLException e) {
             throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "STREAMING_SCAN_START_FAILED", e.getMessage());
         }
@@ -100,7 +100,7 @@ public class StreamingScanStorageAdapter implements StreamingScanStorage {
             }
             int nodeCount = ScanDbStats.countTableRows(rtabmapDbPath(scanId), "Node").orElse(0);
             int lastNodeId = ScanDbStats.maxNodeId(rtabmapDbPath(scanId)).orElse(0);
-            stateWriter.writeState(statePath(scanId), state.floorId(), scanId, storagePath(scanId),
+            stateWriter.writeState(statePath(scanId), state.floorId(), state.areaId(), scanId, storagePath(scanId),
                     state.deviceInfo(), "STARTED", lastNodeId, nodeCount, null);
             return new StreamingFrameStats(scanId, framesApplied, framesSkipped, linksApplied, linksSkipped, lastNodeId, nodeCount);
         } catch (IOException | SQLException e) {
@@ -126,11 +126,11 @@ public class StreamingScanStorageAdapter implements StreamingScanStorage {
                     .or(() -> ScanDbStats.manifestCount(root.resolve("manifest.json"), "sidecar_keyframe_meta_count", objectMapper))
                     .orElse(nodeCount);
             int poiMarkCount = ScanDbStats.countTableRows(root.resolve("scan_metadata.db"), "poi_mark").orElse(0);
-            stateWriter.writeState(statePath(scanId), state.floorId(), scanId, storagePath(scanId),
+            stateWriter.writeState(statePath(scanId), state.floorId(), state.areaId(), scanId, storagePath(scanId),
                     state.deviceInfo(), "READY",
                     ScanDbStats.maxNodeId(rtabmapDbPath(scanId)).orElse(0), nodeCount, Instant.now().toString());
             return new FinalizedStreamingScan(
-                    scanId, state.floorId(), storagePath(scanId),
+                    scanId, state.floorId(), state.areaId(), storagePath(scanId),
                     rtabmapFile.sha256(), rtabmapFile.size(),
                     nodeCount, keyframeCount, poiMarkCount, state.deviceInfo()
             );
@@ -153,7 +153,8 @@ public class StreamingScanStorageAdapter implements StreamingScanStorage {
                 deviceInfo = objectMapper.convertValue(json.path("deviceInfo"), new TypeReference<>() {
                 });
             }
-            return new StreamingState(UUID.fromString(json.path("floorId").asText()), deviceInfo);
+            UUID areaId = json.hasNonNull("areaId") ? UUID.fromString(json.path("areaId").asText()) : null;
+            return new StreamingState(UUID.fromString(json.path("floorId").asText()), areaId, deviceInfo);
         } catch (IOException | IllegalArgumentException e) {
             throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "STREAMING_STATE_INVALID", e.getMessage());
         }
@@ -194,6 +195,6 @@ public class StreamingScanStorageAdapter implements StreamingScanStorage {
         return "scans/" + scanId;
     }
 
-    private record StreamingState(UUID floorId, Map<String, Object> deviceInfo) {
+    private record StreamingState(UUID floorId, UUID areaId, Map<String, Object> deviceInfo) {
     }
 }

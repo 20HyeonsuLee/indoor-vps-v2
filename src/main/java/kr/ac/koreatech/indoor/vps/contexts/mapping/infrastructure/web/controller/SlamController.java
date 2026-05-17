@@ -72,10 +72,10 @@ public class SlamController {
         return new SLAMLocalizeResponse(
                 result.pose(),
                 result.confidence(),
-                result.mapId(),
                 result.numMatches(),
                 result.matchedImageIndex(),
                 result.floorId(),
+                result.areaId(),
                 result.floorLevel()
         );
     }

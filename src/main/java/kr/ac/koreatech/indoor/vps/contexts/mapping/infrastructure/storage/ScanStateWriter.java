@@ -21,6 +21,7 @@ class ScanStateWriter {
     void writeState(
             Path statePath,
             UUID floorId,
+            UUID areaId,
             UUID scanId,
             String storagePath,
             Map<String, Object> deviceInfo,
@@ -31,6 +32,7 @@ class ScanStateWriter {
     ) throws IOException {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("floorId", floorId);
+        body.put("areaId", areaId);
         body.put("scanId", scanId);
         body.put("storagePath", storagePath);
         body.put("state", state);

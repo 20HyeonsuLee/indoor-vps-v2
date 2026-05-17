@@ -178,11 +178,11 @@ class EdgeSnapper {
 
         edges.remove(targetEdge);
         edges.add(seqEdge(scanId, buildJobId, areaId,
-                "split-a:" + targetEdge.getEdgeId(),
+                "split-a:" + targetEdge.getEdgeId() + ":" + corridor.getNodeId(),
                 fromId, junctionId, foot,
                 findNodeCenter(fromId, nodes), t * totalLen));
         edges.add(seqEdge(scanId, buildJobId, areaId,
-                "split-b:" + targetEdge.getEdgeId(),
+                "split-b:" + targetEdge.getEdgeId() + ":" + corridor.getNodeId(),
                 junctionId, toId, findNodeCenter(toId, nodes),
                 foot, (1.0 - t) * totalLen));
         edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), junctionId, c, foot));

@@ -6,7 +6,7 @@ import java.util.UUID;
 
 public interface StreamingScanStorage {
 
-    StartedStreamingScan start(UUID floorId, UUID scanId, Map<String, Object> deviceInfo);
+    StartedStreamingScan start(UUID floorId, UUID areaId, UUID scanId, Map<String, Object> deviceInfo);
 
     StreamingFrameStats append(UUID scanId, ScanFramesRequest request);
 
@@ -47,7 +47,7 @@ public interface StreamingScanStorage {
     ) {
     }
 
-    record StartedStreamingScan(UUID scanId, UUID floorId, String storagePath, String state) {
+    record StartedStreamingScan(UUID scanId, UUID floorId, UUID areaId, String storagePath, String state) {
     }
 
     record StreamingFrameStats(
@@ -64,6 +64,7 @@ public interface StreamingScanStorage {
     record FinalizedStreamingScan(
             UUID scanId,
             UUID floorId,
+            UUID areaId,
             String storagePath,
             String payloadSha256,
             long fileSize,

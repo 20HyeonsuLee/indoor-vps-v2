@@ -16,6 +16,13 @@ services:
       PYTHON_ML_DEVICE: "${PYTHON_ML_DEVICE:-cuda}"
     volumes:
       - app-storage:/data/storage
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 volumes:
   db-data:

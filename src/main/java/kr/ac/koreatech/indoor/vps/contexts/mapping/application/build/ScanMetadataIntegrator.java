@@ -4,9 +4,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ArKitToRtabmap;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildingEntity;
@@ -292,11 +294,16 @@ class ScanMetadataIntegrator {
             return;
         }
 
+        Set<String> seenStopKeys = new HashSet<>();
+        String areaKey = area == null ? "" : area.getAreaId().toString();
         for (InterfloorMarkRow mark : marks) {
+            String connectorKey = mark.prefix() != null ? mark.prefix() : String.valueOf(mark.id());
+            if (!seenStopKeys.add(connectorKey + "::" + areaKey)) {
+                continue;
+            }
             Point3 rtPos = ArKitToRtabmap.convert(mark.tx(), mark.ty(), mark.tz());
             UUID nodeId = deterministicUuid("interfloor-node:" + scanId + ":" + mark.id());
             Point geom = point(rtPos);
-            String connectorKey = mark.prefix() != null ? mark.prefix() : String.valueOf(mark.id());
 
             MapNodeEntity connectorNode = MapNodeEntity.create(
                     nodeId, scanId, buildJobId, areaId, NodeType.poi, geom, connectorKey);

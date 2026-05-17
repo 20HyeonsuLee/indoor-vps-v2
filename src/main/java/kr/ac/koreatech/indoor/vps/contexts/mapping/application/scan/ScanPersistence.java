@@ -53,7 +53,7 @@ public class ScanPersistence {
     @Transactional
     public FloorScanEntity saveFloorScanActive(UUID floorId, FloorAreaEntity area, ScanIngestEntity scan,
             String fileName, long size, String status) {
-        floorScanRepository.deactivateForFloor(floorId);
+        floorScanRepository.deactivateForArea(area.getAreaId());
         floorScanRepository.flush();
         FloorScanEntity floorScan = floorScanRepository
                 .findByFloor_FloorIdAndScan_ScanId(floorId, scan.getScanId())
@@ -70,8 +70,8 @@ public class ScanPersistence {
     }
 
     @Transactional
-    public void deactivateForFloor(UUID floorId) {
-        floorScanRepository.deactivateForFloor(floorId);
+    public void deactivateForArea(UUID areaId) {
+        floorScanRepository.deactivateForArea(areaId);
         floorScanRepository.flush();
     }
 

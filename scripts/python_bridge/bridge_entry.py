@@ -143,9 +143,12 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
     )
 
     async def localize_floor(floor_map: dict[str, object]) -> dict[str, object] | None:
+        # Use areaId as the SuperPoint cache key so two areas under the same
+        # floorId don't share/overwrite each other's index.
+        cache_key = str(floor_map.get("areaId") or floor_map.get("floorId") or payload["buildingId"])
         try:
             result = await slam_engine.localize(
-                str(floor_map.get("floorId") or payload["buildingId"]),
+                cache_key,
                 resized_images,
                 intrinsics=intrinsics,
                 db_path=str(floor_map["filePath"]),
@@ -154,6 +157,7 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
             return {
                 **result,
                 "floor_id": str(floor_map.get("floorId") or ""),
+                "area_id": str(floor_map.get("areaId") or ""),
                 "floor_name": str(floor_map.get("floorName") or ""),
                 "floor_level": int(floor_map.get("level") or 0),
             }
@@ -173,10 +177,10 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
     return {
         "pose": best["pose"],
         "confidence": float(best["confidence"]),
-        "mapId": str(payload["buildingId"]),
         "numMatches": int(best.get("num_matches", 0)),
         "matchedImageIndex": int(best.get("matched_image_index", 0)),
         "floorId": str(best.get("floor_id", "")),
+        "areaId": str(best.get("area_id", "")),
         "floorLevel": int(best.get("floor_level", 0)),
     }
 

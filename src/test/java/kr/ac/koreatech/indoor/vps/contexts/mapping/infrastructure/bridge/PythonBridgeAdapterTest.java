@@ -102,7 +102,7 @@ class PythonBridgeAdapterTest {
                 "building-1",
                 List.of("/tmp/frame.jpg"),
                 "/tmp/storage",
-                List.of(new FloorMapBridgeRef("floor-1", "1F", 1, "/tmp/rtabmap.db"))
+                List.of(new FloorMapBridgeRef("floor-1", "area-1", "1F", 1, "/tmp/rtabmap.db"))
         )))
                 .isInstanceOfSatisfying(ClientApiException.class, error -> {
                     assertThat(error.code()).isEqualTo("BRIDGE_BACKEND_NOT_CONFIGURED");

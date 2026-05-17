@@ -117,7 +117,7 @@ public class ScanController {
                 request == null ? null : request.deviceInfo(),
                 Optional.ofNullable(areaId)
         ));
-        return new ScanStartResponse(started.scanId(), started.floorId(), started.storagePath(), started.state());
+        return new ScanStartResponse(started.scanId(), started.floorId(), started.areaId(), started.storagePath(), started.state());
     }
 
     @PostMapping("/scans/{scanId}/frames")

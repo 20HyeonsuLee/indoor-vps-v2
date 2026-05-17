@@ -46,6 +46,7 @@ public class JpaLocalizationMapProvider implements LocalizationMapProvider {
     private FloorMapBridgeRef toBridgeRef(FloorScanEntity floorScan) {
         return new FloorMapBridgeRef(
                 floorScan.getFloor().getFloorId().toString(),
+                floorScan.getArea().getAreaId().toString(),
                 floorScan.getFloor().getName(),
                 floorScan.getFloor().getLevel(),
                 rtabmapDbPath(floorScan.getScan().getStoragePath()).toString()
@@ -57,7 +58,7 @@ public class JpaLocalizationMapProvider implements LocalizationMapProvider {
         if (!Files.exists(singleDb)) {
             return List.of();
         }
-        return List.of(new FloorMapBridgeRef("", "", 0, singleDb.toString()));
+        return List.of(new FloorMapBridgeRef("", "", "", 0, singleDb.toString()));
     }
 
     private Path rtabmapDbPath(String storagePath) {
@@ -66,13 +67,19 @@ public class JpaLocalizationMapProvider implements LocalizationMapProvider {
             path = properties.getStorageRoot().resolve(path);
         }
         Path fileName = path.getFileName();
-        if (fileName != null && "rtabmap.db".equals(fileName.toString())) {
-            return path;
+        Path scanDir;
+        if (fileName != null && fileName.toString().endsWith(".db")) {
+            scanDir = path.getParent();
+        } else if (fileName != null && fileName.toString().endsWith(".zip") && path.getParent() != null) {
+            scanDir = path.getParent();
+        } else {
+            scanDir = path;
         }
-        if (fileName != null && fileName.toString().endsWith(".zip") && path.getParent() != null) {
-            return path.getParent().resolve("rtabmap.db");
+        Path reprocessed = scanDir.resolve("rtabmap_reprocessed.db");
+        if (Files.exists(reprocessed)) {
+            return reprocessed;
         }
-        return path.resolve("rtabmap.db");
+        return scanDir.resolve("rtabmap.db");
     }
 
     private Optional<UUID> parseUuid(String value) {

@@ -17,6 +17,7 @@ public final class ScanDtos {
     public record ScanStartResponse(
             UUID scanId,
             UUID floorId,
+            UUID areaId,
             String storagePath,
             String state
     ) {

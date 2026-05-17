@@ -7,7 +7,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.area.FloorAreaResolver;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StartedStreamingScan;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,26 +23,30 @@ import org.springframework.transaction.annotation.Transactional;
 public class StartStreamingScanUseCase {
 
     private final FloorQueryService floorService;
+    private final FloorAreaResolver floorAreaResolver;
     private final ScanPersistence scanPersistence;
     private final StreamingScanStorage streamingScanStorage;
 
     public StartStreamingScanUseCase(
             FloorQueryService floorService,
+            FloorAreaResolver floorAreaResolver,
             ScanPersistence scanPersistence,
             StreamingScanStorage streamingScanStorage
     ) {
         this.floorService = floorService;
+        this.floorAreaResolver = floorAreaResolver;
         this.scanPersistence = scanPersistence;
         this.streamingScanStorage = streamingScanStorage;
     }
 
     public StartedStreamingScan execute(StartStreamingScanCommand command) {
         floorService.requireFloor(command.floorId());
+        FloorAreaEntity area = floorAreaResolver.resolve(command.floorId(), command.areaId());
         UUID scanId = parseOptional(command.scanIdText()).orElseGet(UUID::randomUUID);
         if (scanPersistence.scanExists(scanId)) {
             throw new ClientApiException(HttpStatus.CONFLICT, "SCAN_ALREADY_EXISTS", "scan_id already exists");
         }
-        return streamingScanStorage.start(command.floorId(), scanId, deviceInfoMap(command.deviceInfo()));
+        return streamingScanStorage.start(command.floorId(), area.getAreaId(), scanId, deviceInfoMap(command.deviceInfo()));
     }
 
     private Optional<UUID> parseOptional(String value) {

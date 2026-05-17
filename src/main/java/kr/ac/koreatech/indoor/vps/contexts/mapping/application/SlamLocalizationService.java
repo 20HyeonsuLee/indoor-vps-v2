@@ -70,10 +70,10 @@ public class SlamLocalizationService {
             return new SLAMLocalizeResult(
                     response.pose(),
                     response.confidence(),
-                    response.mapId(),
                     response.numMatches(),
                     response.matchedImageIndex(),
                     response.floorId(),
+                    response.areaId(),
                     response.floorLevel()
             );
         } catch (IOException e) {

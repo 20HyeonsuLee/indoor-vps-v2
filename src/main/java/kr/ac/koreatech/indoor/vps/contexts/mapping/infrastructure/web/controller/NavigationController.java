@@ -37,9 +37,11 @@ public class NavigationController {
     public Map<String, Object> getFloorRoute(
             @PathVariable UUID floorId,
             @RequestParam(name = "from") UUID fromNode,
-            @RequestParam(name = "to") UUID toNode
+            @RequestParam(name = "to") UUID toNode,
+            @RequestParam(name = "areaId", required = false) UUID areaId
     ) {
-        FloorRouteResult result = planRouteUseCase.floorRoute(new FloorRouteCommand(floorId, fromNode, toNode));
+        FloorRouteResult result = planRouteUseCase.floorRoute(
+                new FloorRouteCommand(floorId, java.util.Optional.ofNullable(areaId), fromNode, toNode));
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("floorId", result.floorId());
         response.put("scanId", result.scanId());

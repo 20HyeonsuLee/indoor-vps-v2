@@ -52,8 +52,14 @@ public class MergeScansUseCase {
         if (sources.size() != new java.util.HashSet<>(chunkIds).size()) {
             throw new ClientApiException(HttpStatus.NOT_FOUND, "SCAN_CHUNK_NOT_FOUND", "one or more scan chunks were not found");
         }
+        for (FloorScanEntity source : sources) {
+            if (!source.getArea().getAreaId().equals(area.getAreaId())) {
+                throw new ClientApiException(HttpStatus.BAD_REQUEST, "SCAN_CHUNK_AREA_MISMATCH",
+                        "chunk " + source.getFloorScanId() + " does not belong to area " + area.getAreaId());
+            }
+        }
         if (sources.size() == 1) {
-            return activateSingleMerge(floorId, sources.getFirst());
+            return activateSingleMerge(floorId, area, sources.getFirst());
         }
 
         UUID mergedScanId = UUID.randomUUID();
@@ -66,7 +72,7 @@ public class MergeScansUseCase {
                 Map.of("merge", merge.diagnostics() == null ? Map.of() : merge.diagnostics()),
                 area.getAreaId()
         ));
-        scanPersistence.deactivateForFloor(floorId);
+        scanPersistence.deactivateForArea(area.getAreaId());
         FloorScanEntity floorScan = new FloorScanEntity(
                 area,
                 scan,
@@ -91,11 +97,14 @@ public class MergeScansUseCase {
         return mergeStatus(floorId, Optional.empty());
     }
 
-    private MergedScanResult activateSingleMerge(UUID floorId, FloorScanEntity target) {
-        scanPersistence.deactivateForFloor(floorId);
-        target.changeActive(true);
-        target.changeStatus("MERGED");
-        scanPersistence.saveScanEntity(target);
-        return new MergedScanResult(floorId, target.getScan().getScanId(), "MERGED");
+    private MergedScanResult activateSingleMerge(UUID floorId, FloorAreaEntity area, FloorScanEntity target) {
+        scanPersistence.deactivateForArea(area.getAreaId());
+        FloorScanEntity refreshed = scanPersistence.findChunk(floorId, target.getFloorScanId())
+                .orElseThrow(() -> new ClientApiException(
+                        HttpStatus.NOT_FOUND, "SCAN_CHUNK_NOT_FOUND", "scan chunk not found"));
+        refreshed.changeActive(true);
+        refreshed.changeStatus("MERGED");
+        scanPersistence.saveScanEntity(refreshed);
+        return new MergedScanResult(floorId, refreshed.getScan().getScanId(), "MERGED");
     }
 }

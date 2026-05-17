@@ -9,10 +9,10 @@ public final class SlamDtos {
     public record SLAMLocalizeResponse(
             Map<String, Object> pose,
             double confidence,
-            String mapId,
             int numMatches,
             int matchedImageIndex,
             String floorId,
+            String areaId,
             int floorLevel
     ) {
     }

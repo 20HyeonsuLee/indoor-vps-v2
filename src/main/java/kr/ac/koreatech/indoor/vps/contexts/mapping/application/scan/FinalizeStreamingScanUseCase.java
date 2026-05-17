@@ -33,10 +33,13 @@ public class FinalizeStreamingScanUseCase {
     public ScanFinalizeResult execute(FinalizeStreamingScanCommand command) {
         UUID scanId = command.scanId();
         FinalizedStreamingScan finalized = streamingScanStorage.finalizeScan(scanId, command.manifest(), command.metadata());
-        FloorAreaEntity area = floorService.defaultArea(finalized.floorId())
+        UUID resolvedAreaId = finalized.areaId();
+        FloorAreaEntity area = (resolvedAreaId == null
+                ? floorService.defaultArea(finalized.floorId())
+                : floorService.area(resolvedAreaId))
                 .orElseThrow(() -> new kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException(
                         org.springframework.http.HttpStatus.NOT_FOUND,
-                        "DEFAULT_AREA_NOT_FOUND", "floor has no default area"));
+                        "AREA_NOT_FOUND", "scan area not found"));
         ScanIngestEntity scan = scanPersistence.findScan(scanId)
                 .map(existing -> {
                     existing.replacePayload(finalized.payloadSha256(), finalized.storagePath(), finalized.deviceInfo());
