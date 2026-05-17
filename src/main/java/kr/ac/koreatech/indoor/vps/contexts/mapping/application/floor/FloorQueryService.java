@@ -52,6 +52,12 @@ public class FloorQueryService {
                 .or(() -> floorScanRepository.findFirstByFloor_FloorIdAndActiveTrueOrderByCreatedAtDesc(floorId));
     }
 
+    public Optional<FloorScanEntity> activeScanForArea(UUID floorId, Optional<UUID> areaId) {
+        return areaId
+                .flatMap(id -> floorScanRepository.findFirstByArea_AreaIdAndActiveTrueOrderByCreatedAtDesc(id))
+                .or(() -> activeScan(floorId));
+    }
+
     public FloorResult getFloor(UUID floorId) {
         return toFloorResult(requireFloor(floorId));
     }

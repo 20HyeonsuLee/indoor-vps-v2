@@ -26,9 +26,9 @@ public class GetGraphUseCase {
         this.graphQueryFacade = graphQueryFacade;
     }
 
-    public FloorPathResult getFloorPath(UUID floorId) {
+    public FloorPathResult getFloorPath(UUID floorId, Optional<UUID> areaId) {
         floorQuery.requireFloor(floorId);
-        Optional<FloorScanEntity> active = floorQuery.activeScan(floorId);
+        Optional<FloorScanEntity> active = floorQuery.activeScanForArea(floorId, areaId);
         if (active.isEmpty()) {
             return FloorPathResult.empty(floorId);
         }

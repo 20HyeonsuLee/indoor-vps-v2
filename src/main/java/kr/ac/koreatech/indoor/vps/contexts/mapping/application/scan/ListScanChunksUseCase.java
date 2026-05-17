@@ -1,9 +1,12 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.area.FloorAreaResolver;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -16,21 +19,34 @@ import org.springframework.transaction.annotation.Transactional;
 public class ListScanChunksUseCase {
 
     private final FloorQueryService floorService;
+    private final FloorAreaResolver floorAreaResolver;
     private final ScanPersistence scanPersistence;
 
     public ListScanChunksUseCase(
             FloorQueryService floorService,
+            FloorAreaResolver floorAreaResolver,
             ScanPersistence scanPersistence
     ) {
         this.floorService = floorService;
+        this.floorAreaResolver = floorAreaResolver;
         this.scanPersistence = scanPersistence;
     }
 
-    public List<ScanChunkResult> listChunks(UUID floorId) {
+    public List<ScanChunkResult> listChunks(UUID floorId, Optional<UUID> areaId) {
         floorService.requireFloor(floorId);
+        if (areaId.isPresent()) {
+            FloorAreaEntity area = floorAreaResolver.resolve(floorId, areaId);
+            return scanPersistence.findByAreaOrdered(area.getAreaId()).stream()
+                    .map(this::toScanChunkResult)
+                    .toList();
+        }
         return scanPersistence.findByFloorOrdered(floorId).stream()
                 .map(this::toScanChunkResult)
                 .toList();
+    }
+
+    public List<ScanChunkResult> listChunks(UUID floorId) {
+        return listChunks(floorId, Optional.empty());
     }
 
     @Transactional
