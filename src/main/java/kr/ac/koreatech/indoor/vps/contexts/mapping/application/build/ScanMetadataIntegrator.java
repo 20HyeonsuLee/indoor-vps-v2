@@ -352,12 +352,12 @@ class ScanMetadataIntegrator {
             PoiCanonicalEntity poi,
             UUID routeNodeId
     ) {
-        boolean exists = verticalConnectorStopRepository
+        verticalConnectorStopRepository
                 .findByConnector_ConnectorIdAndLevelId(connector.getConnectorId(), levelId)
-                .isPresent();
-        if (exists) {
-            return Optional.empty();
-        }
+                .ifPresent(stop -> {
+                    verticalConnectorStopRepository.delete(stop);
+                    verticalConnectorStopRepository.flush();
+                });
         return Optional.of(VerticalConnectorStopEntity.create(
                 UUID.randomUUID(), connector, levelId, poi, routeNodeId));
     }

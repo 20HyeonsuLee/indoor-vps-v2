@@ -113,14 +113,14 @@ public class ScanMetadataReaderAdapter implements ScanMetadataReader {
     private List<BranchEdgeRow> readBranchEdges(JdbcClient jdbc) {
         try {
             return jdbc.sql("""
-                    SELECT id, from_mark_id, to_mark_id, kind
+                    SELECT id, from_node_id, to_node_id, kind
                     FROM branch_edge
                     ORDER BY id
                     """)
                     .query((rs, rowNum) -> new BranchEdgeRow(
                             rs.getLong("id"),
-                            rs.getLong("from_mark_id"),
-                            rs.getLong("to_mark_id"),
+                            rs.getLong("from_node_id"),
+                            rs.getLong("to_node_id"),
                             rs.getString("kind")
                     ))
                     .list();

@@ -69,4 +69,9 @@ public class VerticalConnectorStopEntity {
     public UUID getRouteNodeId() {
         return routeNodeId;
     }
+
+    public void retarget(PoiCanonicalEntity newPoi, UUID newRouteNodeId) {
+        this.poiCanonical = newPoi;
+        this.routeNodeId = newRouteNodeId;
+    }
 }
