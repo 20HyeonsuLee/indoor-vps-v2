@@ -16,7 +16,9 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntit
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapEdgeRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapNodeRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.PoiCanonicalRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.VerticalConnectorStopRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanMetadataReader.ScanMetadata;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -29,6 +31,8 @@ class BuildGraphPersister {
     private final ScanIngestRepository scanIngestRepository;
     private final MapNodeRepository mapNodeRepository;
     private final MapEdgeRepository mapEdgeRepository;
+    private final PoiCanonicalRepository poiCanonicalRepository;
+    private final VerticalConnectorStopRepository verticalConnectorStopRepository;
     private final ScanMetadataIntegrator metadataIntegrator;
 
     BuildGraphPersister(
@@ -36,12 +40,16 @@ class BuildGraphPersister {
             ScanIngestRepository scanIngestRepository,
             MapNodeRepository mapNodeRepository,
             MapEdgeRepository mapEdgeRepository,
+            PoiCanonicalRepository poiCanonicalRepository,
+            VerticalConnectorStopRepository verticalConnectorStopRepository,
             ScanMetadataIntegrator metadataIntegrator
     ) {
         this.buildJobRepository = buildJobRepository;
         this.scanIngestRepository = scanIngestRepository;
         this.mapNodeRepository = mapNodeRepository;
         this.mapEdgeRepository = mapEdgeRepository;
+        this.poiCanonicalRepository = poiCanonicalRepository;
+        this.verticalConnectorStopRepository = verticalConnectorStopRepository;
         this.metadataIntegrator = metadataIntegrator;
     }
 
@@ -62,17 +70,27 @@ class BuildGraphPersister {
         List<MapNodeEntity> allNodes = new ArrayList<>(graph.nodes());
         List<MapEdgeEntity> allEdges = new ArrayList<>(graph.edges());
 
+        List<ScanMetadataIntegrator.IntegrationResult> integrations = new ArrayList<>();
         scanMetadata.ifPresent(metadata -> {
-            IntegrationResult integration = metadataIntegrator.integrate(scanId, buildJobId, metadata, allNodes);
+            ScanMetadataIntegrator.IntegrationResult integration =
+                    metadataIntegrator.integrate(scanId, buildJobId, metadata, allNodes);
             allNodes.addAll(integration.extraNodes());
             allEdges.addAll(integration.extraEdges());
+            integrations.add(integration);
             enrichDeviceInfo(job.getScan(), metadata);
         });
 
         mapEdgeRepository.deleteByScanId(scanId);
         mapNodeRepository.deleteByScanId(scanId);
-        mapNodeRepository.saveAll(allNodes);
+        // map_node를 먼저 flush해 FK 참조(poi_canonical.route_node_id)가 만족되도록 보장
+        mapNodeRepository.saveAllAndFlush(allNodes);
         mapEdgeRepository.saveAll(allEdges);
+
+        // map_node flush 완료 후 poi_canonical, vertical_connector_stop 저장
+        for (ScanMetadataIntegrator.IntegrationResult integration : integrations) {
+            poiCanonicalRepository.saveAllAndFlush(integration.pois());
+            verticalConnectorStopRepository.saveAll(integration.stops());
+        }
 
         Map<String, Object> counts = new LinkedHashMap<>();
         counts.put("build_source", reprocess.hasUsableOutput()

@@ -20,7 +20,6 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.NodeType;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.Point3;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildingRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.PoiCanonicalRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.VerticalConnectorRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.VerticalConnectorStopRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanMetadataReader.BranchMarkRow;
@@ -43,7 +42,6 @@ class ScanMetadataIntegrator {
 
     private final BuildingRepository buildingRepository;
     private final FloorRepository floorRepository;
-    private final PoiCanonicalRepository poiCanonicalRepository;
     private final VerticalConnectorRepository verticalConnectorRepository;
     private final VerticalConnectorStopRepository verticalConnectorStopRepository;
     private final GeometryFactory geometryFactory = new GeometryFactory();
@@ -51,13 +49,11 @@ class ScanMetadataIntegrator {
     ScanMetadataIntegrator(
             BuildingRepository buildingRepository,
             FloorRepository floorRepository,
-            PoiCanonicalRepository poiCanonicalRepository,
             VerticalConnectorRepository verticalConnectorRepository,
             VerticalConnectorStopRepository verticalConnectorStopRepository
     ) {
         this.buildingRepository = buildingRepository;
         this.floorRepository = floorRepository;
-        this.poiCanonicalRepository = poiCanonicalRepository;
         this.verticalConnectorRepository = verticalConnectorRepository;
         this.verticalConnectorStopRepository = verticalConnectorStopRepository;
     }
@@ -73,12 +69,14 @@ class ScanMetadataIntegrator {
 
         List<MapNodeEntity> extraNodes = new ArrayList<>();
         List<MapEdgeEntity> extraEdges = new ArrayList<>();
+        List<PoiCanonicalEntity> pois = new ArrayList<>();
+        List<VerticalConnectorStopEntity> stops = new ArrayList<>();
 
         applyBranchMarks(metadata.branchMarks(), nodeIndex);
-        applyPoiMarks(metadata.poiMarks(), session, scanId, buildJobId, nodeIndex, extraNodes, extraEdges);
-        applyInterfloorMarks(metadata.interfloorMarks(), session, scanId, buildJobId, nodeIndex, extraNodes, extraEdges);
+        applyPoiMarks(metadata.poiMarks(), session, scanId, buildJobId, nodeIndex, extraNodes, extraEdges, pois);
+        applyInterfloorMarks(metadata.interfloorMarks(), session, scanId, buildJobId, nodeIndex, extraNodes, extraEdges, pois, stops);
 
-        return new IntegrationResult(extraNodes, extraEdges);
+        return new IntegrationResult(extraNodes, extraEdges, pois, stops);
     }
 
     private void applyBranchMarks(List<BranchMarkRow> marks, NodeIndex index) {
@@ -103,7 +101,8 @@ class ScanMetadataIntegrator {
             UUID buildJobId,
             NodeIndex index,
             List<MapNodeEntity> extraNodes,
-            List<MapEdgeEntity> extraEdges
+            List<MapEdgeEntity> extraEdges,
+            List<PoiCanonicalEntity> pois
     ) {
         BuildingEntity building = resolveBuilding(session).orElse(null);
         FloorEntity floor = resolveFloor(session).orElse(null);
@@ -128,7 +127,7 @@ class ScanMetadataIntegrator {
                     nodeId,
                     List.of(mark.id())
             );
-            poiCanonicalRepository.save(canonical);
+            pois.add(canonical);
 
             index.findNearest(rtPos, SNAP_DISTANCE_M).ifPresent(nearest -> {
                 MapEdgeEntity spur = spurEdge(scanId, buildJobId, nodeId, nearest.getNodeId(), rtPos, nodeCenter(nearest));
@@ -144,7 +143,9 @@ class ScanMetadataIntegrator {
             UUID buildJobId,
             NodeIndex index,
             List<MapNodeEntity> extraNodes,
-            List<MapEdgeEntity> extraEdges
+            List<MapEdgeEntity> extraEdges,
+            List<PoiCanonicalEntity> pois,
+            List<VerticalConnectorStopEntity> stops
     ) {
         BuildingEntity building = resolveBuilding(session).orElse(null);
         if (building == null) {
@@ -174,9 +175,8 @@ class ScanMetadataIntegrator {
                     nodeId,
                     List.of(mark.id())
             );
-            poiCanonicalRepository.save(stopPoi);
-
-            upsertStop(connector, levelId, stopPoi, nodeId);
+            pois.add(stopPoi);
+            buildStop(connector, levelId, stopPoi, nodeId).ifPresent(stops::add);
 
             index.findNearest(rtPos, SNAP_DISTANCE_M).ifPresent(nearest -> {
                 MapEdgeEntity spur = spurEdge(scanId, buildJobId, nodeId, nearest.getNodeId(), rtPos, nodeCenter(nearest));
@@ -201,21 +201,20 @@ class ScanMetadataIntegrator {
                 });
     }
 
-    private void upsertStop(VerticalConnectorEntity connector, String levelId, PoiCanonicalEntity poi, UUID routeNodeId) {
-        verticalConnectorStopRepository
+    /**
+     * 이미 존재하는 stop이면 빈 Optional 반환(persist 불필요).
+     * 없으면 새 entity를 만들어 반환 — DB 저장은 호출자가 담당.
+     */
+    private Optional<VerticalConnectorStopEntity> buildStop(
+            VerticalConnectorEntity connector, String levelId, PoiCanonicalEntity poi, UUID routeNodeId
+    ) {
+        boolean exists = verticalConnectorStopRepository
                 .findByConnector_ConnectorIdAndLevelId(connector.getConnectorId(), levelId)
-                .ifPresentOrElse(
-                        existing -> { /* already exists — keep */ },
-                        () -> verticalConnectorStopRepository.save(
-                                VerticalConnectorStopEntity.create(
-                                        UUID.randomUUID(),
-                                        connector,
-                                        levelId,
-                                        poi,
-                                        routeNodeId
-                                )
-                        )
-                );
+                .isPresent();
+        if (exists) {
+            return Optional.empty();
+        }
+        return Optional.of(VerticalConnectorStopEntity.create(UUID.randomUUID(), connector, levelId, poi, routeNodeId));
     }
 
     private MapEdgeEntity spurEdge(UUID scanId, UUID buildJobId, UUID fromId, UUID toId, Point3 fromPos, Point3 toPos) {
@@ -268,7 +267,12 @@ class ScanMetadataIntegrator {
         return UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    record IntegrationResult(List<MapNodeEntity> extraNodes, List<MapEdgeEntity> extraEdges) {
+    record IntegrationResult(
+            List<MapNodeEntity> extraNodes,
+            List<MapEdgeEntity> extraEdges,
+            List<PoiCanonicalEntity> pois,
+            List<VerticalConnectorStopEntity> stops
+    ) {
     }
 
     /** rtabmap node 목록을 공간 인덱스로 감싼다. keyframe seq → rtabmap node 매핑도 포함. */
