@@ -6,6 +6,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorCreateCommand;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUpdateCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,33 +27,35 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "층")
 public class FloorController {
     private final FloorUseCase service;
+    private final FloorQueryService query;
 
-    public FloorController(FloorUseCase service) {
+    public FloorController(FloorUseCase service, FloorQueryService query) {
         this.service = service;
+        this.query = query;
     }
 
     @GetMapping("/buildings/{buildingId}/floors")
-    public List<FloorResponse> listFloors(@PathVariable UUID buildingId) {
-        return service.listFloors(buildingId);
+    public List<FloorResult> listFloors(@PathVariable UUID buildingId) {
+        return query.listFloors(buildingId);
     }
 
     @PostMapping("/buildings/{buildingId}/floors")
     @ResponseStatus(HttpStatus.CREATED)
-    public FloorResponse createFloor(
+    public FloorResult createFloor(
             @PathVariable UUID buildingId,
             @Valid @RequestBody FloorCreateRequest request
     ) {
-        return service.createFloor(buildingId, request);
+        return service.createFloor(buildingId, new FloorCreateCommand(request.name(), request.level(), request.height()));
     }
 
     @GetMapping("/floors/{floorId}")
-    public FloorResponse getFloor(@PathVariable UUID floorId) {
-        return service.getFloor(floorId);
+    public FloorResult getFloor(@PathVariable UUID floorId) {
+        return query.getFloor(floorId);
     }
 
     @PutMapping("/floors/{floorId}")
-    public FloorResponse updateFloor(@PathVariable UUID floorId, @RequestBody FloorUpdateRequest request) {
-        return service.updateFloor(floorId, request);
+    public FloorResult updateFloor(@PathVariable UUID floorId, @RequestBody FloorUpdateRequest request) {
+        return service.updateFloor(floorId, new FloorUpdateCommand(request.name(), request.height()));
     }
 
     @DeleteMapping("/floors/{floorId}")

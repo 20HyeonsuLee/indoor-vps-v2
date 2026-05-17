@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
@@ -17,17 +17,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class GetFloorMapUseCase {
-    private final FloorUseCase floorUseCase;
+    private final FloorQueryService floorQuery;
     private final GetGraphUseCase getGraphUseCase;
 
-    public GetFloorMapUseCase(FloorUseCase floorUseCase, GetGraphUseCase getGraphUseCase) {
-        this.floorUseCase = floorUseCase;
+    public GetFloorMapUseCase(FloorQueryService floorQuery, GetGraphUseCase getGraphUseCase) {
+        this.floorQuery = floorQuery;
         this.getGraphUseCase = getGraphUseCase;
     }
 
     public FloorMapResult getFloorMap(UUID floorId) {
-        FloorEntity floor = floorUseCase.requireFloor(floorId);
-        Optional<FloorScanEntity> active = floorUseCase.activeScan(floorId);
+        FloorEntity floor = floorQuery.requireFloor(floorId);
+        Optional<FloorScanEntity> active = floorQuery.activeScan(floorId);
         UUID scanId = active.map(scan -> scan.getScan().getScanId()).orElse(null);
         UUID buildJobId = scanId == null ? null : getGraphUseCase.latestBuildJobId(scanId);
         List<MapNodeEntity> nodes = scanId == null ? List.of() : getGraphUseCase.nodes(scanId);

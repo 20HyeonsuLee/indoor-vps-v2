@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge;
+package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.bridge;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,41 +10,28 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.HealthBridgeResponse;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.LocalizeBridgeRequest;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.LocalizeBridgeResponse;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.MergeScanBridgeRequest;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.MergeScanBridgeResponse;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeCommand;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.HealthBridgeResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 @Component
-public class PythonBridgeClient {
+public class PythonBridgeAdapter implements PythonBridge {
     private final IndoorProperties properties;
     private final ObjectMapper objectMapper;
 
-    public PythonBridgeClient(IndoorProperties properties, ObjectMapper objectMapper) {
+    public PythonBridgeAdapter(IndoorProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
     }
 
-    public HealthBridgeResponse health() {
-        return call(BridgeCommand.HEALTH, Map.of(), HealthBridgeResponse.class);
-    }
-
-    public LocalizeBridgeResponse localize(LocalizeBridgeRequest request) {
-        return call(BridgeCommand.LOCALIZE, request, LocalizeBridgeResponse.class);
-    }
-
-    public MergeScanBridgeResponse mergeScan(MergeScanBridgeRequest request) {
-        return call(BridgeCommand.MERGE_SCAN, request, MergeScanBridgeResponse.class);
-    }
-
-    public JsonNode callJson(String command, Map<String, Object> payload) {
-        return call(command, payload, JsonNode.class);
-    }
-
+    @Override
     public void ensureEnabled() {
         if (!properties.getPython().isEnabled()) {
             throw new ClientApiException(
@@ -55,11 +42,26 @@ public class PythonBridgeClient {
         }
     }
 
-    public <T> T call(BridgeCommand command, Object payload, Class<T> responseType) {
+    @Override
+    public HealthBridgeResponse health() {
+        return call(BridgeCommand.HEALTH, Map.of(), HealthBridgeResponse.class);
+    }
+
+    @Override
+    public LocalizeBridgeResponse localize(LocalizeBridgeRequest request) {
+        return call(BridgeCommand.LOCALIZE, request, LocalizeBridgeResponse.class);
+    }
+
+    @Override
+    public MergeScanBridgeResponse mergeScan(MergeScanBridgeRequest request) {
+        return call(BridgeCommand.MERGE_SCAN, request, MergeScanBridgeResponse.class);
+    }
+
+    private <T> T call(BridgeCommand command, Object payload, Class<T> responseType) {
         return call(command.wireName(), payload, responseType);
     }
 
-    public <T> T call(String command, Object payload, Class<T> responseType) {
+    private <T> T call(String command, Object payload, Class<T> responseType) {
         ensureEnabled();
 
         try {

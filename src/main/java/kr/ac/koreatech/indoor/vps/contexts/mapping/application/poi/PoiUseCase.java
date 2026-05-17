@@ -1,11 +1,9 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.poi;
 
-import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.PoiDtos.*;
-
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.PoiCanonicalEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.PoiCanonicalRepository;
 import org.locationtech.jts.geom.Coordinate;
@@ -18,40 +16,40 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class PoiUseCase {
-    private final BuildingUseCase buildingUseCase;
+    private final BuildingQueryService buildingQuery;
     private final PoiCanonicalRepository poiCanonicalRepository;
 
     public PoiUseCase(
-            BuildingUseCase buildingUseCase,
+            BuildingQueryService buildingQuery,
             PoiCanonicalRepository poiCanonicalRepository
     ) {
-        this.buildingUseCase = buildingUseCase;
+        this.buildingQuery = buildingQuery;
         this.poiCanonicalRepository = poiCanonicalRepository;
     }
 
-    public List<POIResponse> listPois(UUID buildingId) {
-        buildingUseCase.requireBuilding(buildingId);
+    public List<PoiResult> listPois(UUID buildingId) {
+        buildingQuery.requireBuilding(buildingId);
         return poiCanonicalRepository.findByBuilding_BuildingIdOrderByNameAscLabelAsc(buildingId).stream()
-                .map(this::toPoiResponse)
+                .map(this::toPoiResult)
                 .toList();
     }
 
-    public List<POIResponse> searchPois(UUID buildingId, String query) {
-        buildingUseCase.requireBuilding(buildingId);
+    public List<PoiResult> searchPois(UUID buildingId, String query) {
+        buildingQuery.requireBuilding(buildingId);
         if (query == null || query.isBlank()) {
             return listPois(buildingId);
         }
         return poiCanonicalRepository.search(buildingId, "%" + query.toLowerCase() + "%").stream()
-                .map(this::toPoiResponse)
+                .map(this::toPoiResult)
                 .toList();
     }
 
-    private POIResponse toPoiResponse(PoiCanonicalEntity poi) {
+    private PoiResult toPoiResult(PoiCanonicalEntity poi) {
         Point point = firstPoint(poi);
         Map<String, Double> displayPoint = point == null
                 ? null
                 : Map.of("x", x(point), "y", y(point), "z", z(point));
-        return new POIResponse(
+        return new PoiResult(
                 poi.getCanonicalId(),
                 poi.getBuilding() == null ? null : poi.getBuilding().getBuildingId(),
                 poi.getFloor() == null ? null : poi.getFloor().getFloorId(),

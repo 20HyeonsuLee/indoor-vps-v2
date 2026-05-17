@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge;
+package kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port;
 
 public enum BridgeCommand {
     HEALTH("health"),

@@ -3,12 +3,11 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 import java.util.List;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.ScanDtos.ScanChunkResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -19,13 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class ListScanChunksUseCase {
 
-    private final FloorUseCase floorService;
+    private final FloorQueryService floorService;
     private final FloorScanRepository floorScanRepository;
     private final ScanIngestRepository scanIngestRepository;
     private final ScanArchiveStorage scanArchiveStorage;
 
     public ListScanChunksUseCase(
-            FloorUseCase floorService,
+            FloorQueryService floorService,
             FloorScanRepository floorScanRepository,
             ScanIngestRepository scanIngestRepository,
             ScanArchiveStorage scanArchiveStorage
@@ -36,10 +35,10 @@ public class ListScanChunksUseCase {
         this.scanArchiveStorage = scanArchiveStorage;
     }
 
-    public List<ScanChunkResponse> listChunks(UUID floorId) {
+    public List<ScanChunkResult> listChunks(UUID floorId) {
         floorService.requireFloor(floorId);
         return floorScanRepository.findByFloor_FloorIdOrderByUploadOrderAscCreatedAtAsc(floorId).stream()
-                .map(this::toScanChunkResponse)
+                .map(this::toScanChunkResult)
                 .toList();
     }
 
@@ -58,8 +57,8 @@ public class ListScanChunksUseCase {
         }
     }
 
-    private ScanChunkResponse toScanChunkResponse(FloorScanEntity scan) {
-        return new ScanChunkResponse(
+    private ScanChunkResult toScanChunkResult(FloorScanEntity scan) {
+        return new ScanChunkResult(
                 scan.getFloorScanId(),
                 scan.getFloor().getFloorId(),
                 scan.getScan().getScanId(),

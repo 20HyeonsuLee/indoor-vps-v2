@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation;
+package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controller;
 
 import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.MapDtos.*;
 
@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.NavigationGeometry;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteEdge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteNode;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;

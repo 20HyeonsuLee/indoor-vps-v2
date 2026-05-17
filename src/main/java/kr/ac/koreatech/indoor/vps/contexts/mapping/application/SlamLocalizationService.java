@@ -1,17 +1,16 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application;
 
-import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.SlamDtos.*;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.FloorMapBridgeRef;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.LocalizeBridgeRequest;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.LocalizeBridgeResponse;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.PythonBridgeClient;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.SLAMLocalizeResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.FloorMapBridgeRef;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,21 +20,21 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class SlamLocalizationService {
     private final IndoorProperties properties;
-    private final PythonBridgeClient bridgeClient;
+    private final PythonBridge bridge;
     private final LocalizationMapProvider mapProvider;
 
     public SlamLocalizationService(
             IndoorProperties properties,
-            PythonBridgeClient bridgeClient,
+            PythonBridge bridge,
             LocalizationMapProvider mapProvider
     ) {
         this.properties = properties;
-        this.bridgeClient = bridgeClient;
+        this.bridge = bridge;
         this.mapProvider = mapProvider;
     }
 
     @Transactional(readOnly = true)
-    public SLAMLocalizeResponse localize(
+    public SLAMLocalizeResult localize(
             List<MultipartFile> images,
             String buildingId,
             String mapId
@@ -47,7 +46,7 @@ public class SlamLocalizationService {
         if (resolvedBuildingId == null || resolvedBuildingId.isBlank()) {
             throw new ClientApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "building_id or map_id is required");
         }
-        bridgeClient.ensureEnabled();
+        bridge.ensureEnabled();
 
         List<FloorMapBridgeRef> floorMaps = mapProvider.activeFloorMaps(resolvedBuildingId);
         if (floorMaps.isEmpty()) {
@@ -65,13 +64,13 @@ public class SlamLocalizationService {
                 image.transferTo(file);
                 tempFiles.add(file);
             }
-            LocalizeBridgeResponse response = bridgeClient.localize(new LocalizeBridgeRequest(
+            LocalizeBridgeResponse response = bridge.localize(new LocalizeBridgeRequest(
                     resolvedBuildingId,
                     tempFiles.stream().map(Path::toString).toList(),
                     properties.getStorageRoot().toString(),
                     floorMaps
             ));
-            return new SLAMLocalizeResponse(
+            return new SLAMLocalizeResult(
                     response.pose(),
                     response.confidence(),
                     response.mapId(),

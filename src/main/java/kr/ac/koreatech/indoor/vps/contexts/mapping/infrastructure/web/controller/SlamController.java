@@ -4,7 +4,9 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
+import java.util.Map;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.SlamLocalizationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.SLAMLocalizeResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture.FixtureCaptureService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture.FixtureCaptureService.CaptureRecord;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,12 +35,25 @@ public class SlamController {
     ) {
         CaptureRecord capture = fixtureCapture.captureLocalizeImages(images, buildingId, mapId);
         try {
-            SLAMLocalizeResponse response = localizationService.localize(images, buildingId, mapId);
+            SLAMLocalizeResult result = localizationService.localize(images, buildingId, mapId);
+            SLAMLocalizeResponse response = toResponse(result);
             fixtureCapture.writeResponse(capture, response);
             return response;
         } catch (RuntimeException e) {
             fixtureCapture.writeError(capture, e);
             throw e;
         }
+    }
+
+    private SLAMLocalizeResponse toResponse(SLAMLocalizeResult result) {
+        return new SLAMLocalizeResponse(
+                result.pose(),
+                result.confidence(),
+                result.mapId(),
+                result.numMatches(),
+                result.matchedImageIndex(),
+                result.floorId(),
+                result.floorLevel()
+        );
     }
 }

@@ -10,7 +10,6 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFlo
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFloorMapUseCase.FloorMapResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetGraphUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetGraphUseCase.FloorPathResult;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.NavigationResponseMapper;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

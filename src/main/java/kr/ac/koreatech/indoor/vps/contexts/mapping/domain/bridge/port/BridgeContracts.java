@@ -1,4 +1,4 @@
-package kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge;
+package kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port;
 
 import java.util.List;
 import java.util.Map;

@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
@@ -15,7 +15,6 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRe
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage.StoredScanArchive;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.ScanDtos.ScanChunkResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,14 +26,14 @@ import org.springframework.web.multipart.MultipartFile;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class UploadScanChunkUseCase {
 
-    private final FloorUseCase floorService;
+    private final FloorQueryService floorService;
     private final ScanIngestRepository scanIngestRepository;
     private final FloorScanRepository floorScanRepository;
     private final ScanArchiveStorage scanArchiveStorage;
     private final ObjectMapper objectMapper;
 
     public UploadScanChunkUseCase(
-            FloorUseCase floorService,
+            FloorQueryService floorService,
             ScanIngestRepository scanIngestRepository,
             FloorScanRepository floorScanRepository,
             ScanArchiveStorage scanArchiveStorage,
@@ -48,7 +47,7 @@ public class UploadScanChunkUseCase {
     }
 
     @Transactional
-    public ScanChunkResponse execute(
+    public ScanChunkResult execute(
             UUID floorId,
             MultipartFile upload,
             String scanIdText,
@@ -92,7 +91,7 @@ public class UploadScanChunkUseCase {
             floorScan.updateStoredFile(stored.fileName(), stored.size(), "UPLOADED");
             floorScan.changeActive(true);
             floorScan = floorScanRepository.saveAndFlush(floorScan);
-            return toScanChunkResponse(floorScan);
+            return toScanChunkResult(floorScan);
         } catch (RuntimeException e) {
             if (!existingScan) {
                 scanArchiveStorage.deleteScan(scanId);
@@ -101,8 +100,8 @@ public class UploadScanChunkUseCase {
         }
     }
 
-    private ScanChunkResponse toScanChunkResponse(FloorScanEntity scan) {
-        return new ScanChunkResponse(
+    private ScanChunkResult toScanChunkResult(FloorScanEntity scan) {
+        return new ScanChunkResult(
                 scan.getFloorScanId(),
                 scan.getFloor().getFloorId(),
                 scan.getScan().getScanId(),

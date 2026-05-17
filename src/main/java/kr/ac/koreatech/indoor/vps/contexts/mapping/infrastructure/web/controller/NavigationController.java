@@ -5,10 +5,11 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.NavigationResponseMapper;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingCommand;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.PathStep;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PlanRouteUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PlanRouteUseCase.FloorRouteResult;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -54,6 +55,42 @@ public class NavigationController {
             @PathVariable UUID buildingId,
             @Valid @RequestBody PathfindingRequest request
     ) {
-        return planRouteUseCase.pathfinding(buildingId, request);
+        PathfindingResult result = planRouteUseCase.pathfinding(buildingId, new PathfindingCommand(
+                request.startScanId(),
+                request.startFloorLevel(),
+                request.startX(),
+                request.startY(),
+                request.startZ(),
+                request.destinationName()
+        ));
+        return toPathfindingResponse(result);
+    }
+
+    private PathfindingResponse toPathfindingResponse(PathfindingResult result) {
+        return new PathfindingResponse(
+                result.buildingId(),
+                result.totalDistance(),
+                result.estimatedTimeSeconds(),
+                result.steps().stream().map(this::toPathStep).toList(),
+                result.floorTransitions().stream().map(t -> new FloorTransitionResponse(
+                        t.fromFloorLevel(), t.toFloorLevel(), t.connectorType(), t.connectorKey()
+                )).toList(),
+                result.routeMetadata()
+        );
+    }
+
+    private PathStepResponse toPathStep(PathStep step) {
+        return new PathStepResponse(
+                step.stepNumber(),
+                step.floorLevel(),
+                new RoutePosition(
+                        step.position().x(),
+                        step.position().y(),
+                        step.position().z(),
+                        step.position().floorLevel()
+                ),
+                step.instruction(),
+                step.nodeId()
+        );
     }
 }

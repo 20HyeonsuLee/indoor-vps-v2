@@ -8,8 +8,12 @@ import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.FinalizeStreamingScanUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ListScanChunksUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergeScansUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergedScanResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ProcessFloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ProcessingStatusResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.PushStreamingFramesUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ScanChunkResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ScanFinalizeResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.StartStreamingScanUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.UploadScanChunkUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.ScanFramesRequest;
@@ -67,7 +71,7 @@ public class ScanController {
 
     @PostMapping("/floors/{floorId}/scans/chunks")
     @ResponseStatus(HttpStatus.CREATED)
-    public ScanChunkResponse uploadScanChunk(
+    public ScanChunkResult uploadScanChunk(
             @PathVariable UUID floorId,
             @RequestParam(name = "file", required = false) MultipartFile file,
             @RequestParam(name = "payload", required = false) MultipartFile payload,
@@ -81,7 +85,7 @@ public class ScanController {
         }
         CaptureRecord capture = fixtureCapture.captureScanChunk(floorId, upload, scanId, deviceInfo, force);
         try {
-            ScanChunkResponse response = uploadScanChunkUseCase.execute(floorId, upload, scanId, deviceInfo, force);
+            ScanChunkResult response = uploadScanChunkUseCase.execute(floorId, upload, scanId, deviceInfo, force);
             fixtureCapture.writeResponse(capture, response);
             return response;
         } catch (RuntimeException e) {
@@ -122,7 +126,7 @@ public class ScanController {
     }
 
     @PostMapping(value = "/scans/{scanId}/finalize", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ScanFinalizeResponse finalizeStreamingScan(
+    public ScanFinalizeResult finalizeStreamingScan(
             @PathVariable UUID scanId,
             @RequestParam("manifest") MultipartFile manifest,
             @RequestParam("metadata") MultipartFile metadata
@@ -131,7 +135,7 @@ public class ScanController {
     }
 
     @GetMapping("/floors/{floorId}/scans/chunks")
-    public List<ScanChunkResponse> listScanChunks(@PathVariable UUID floorId) {
+    public List<ScanChunkResult> listScanChunks(@PathVariable UUID floorId) {
         return listScanChunksUseCase.listChunks(floorId);
     }
 
@@ -142,27 +146,27 @@ public class ScanController {
     }
 
     @PostMapping("/floors/{floorId}/scans/merge")
-    public MergedScanResponse mergeScans(@PathVariable UUID floorId, @RequestBody MergeScansRequest request) {
+    public MergedScanResult mergeScans(@PathVariable UUID floorId, @RequestBody MergeScansRequest request) {
         return mergeScansUseCase.merge(floorId, request.chunkIds());
     }
 
     @GetMapping("/floors/{floorId}/scans/merge/status")
-    public MergedScanResponse getMergeStatus(@PathVariable UUID floorId) {
+    public MergedScanResult getMergeStatus(@PathVariable UUID floorId) {
         return mergeScansUseCase.mergeStatus(floorId);
     }
 
     @PostMapping("/floors/{floorId}/process")
-    public ProcessingStatusResponse processFloor(@PathVariable UUID floorId) {
+    public ProcessingStatusResult processFloor(@PathVariable UUID floorId) {
         return processFloorUseCase.process(floorId);
     }
 
     @PostMapping("/floors/{floorId}/build")
-    public ProcessingStatusResponse buildFloor(@PathVariable UUID floorId) {
+    public ProcessingStatusResult buildFloor(@PathVariable UUID floorId) {
         return processFloorUseCase.process(floorId);
     }
 
     @GetMapping("/floors/{floorId}/process/status")
-    public ProcessingStatusResponse getProcessStatus(@PathVariable UUID floorId) {
+    public ProcessingStatusResult getProcessStatus(@PathVariable UUID floorId) {
         return processFloorUseCase.processStatus(floorId);
     }
 }

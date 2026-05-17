@@ -1,73 +1,48 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.building;
 
-import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.BuildingDtos.*;
-
-import java.util.List;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.building.BuildingStatus;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildingEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildingRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Building mutations — reads delegated to BuildingQueryService.
+ * public methods: createBuilding, updateBuilding, deleteBuilding, patchStatus, requireBuilding = 5
+ */
 @Service
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class BuildingUseCase {
     private final BuildingRepository buildingRepository;
-    private final FloorUseCase floors;
+    private final BuildingQueryService buildingQueryService;
 
     public BuildingUseCase(
             BuildingRepository buildingRepository,
-            FloorUseCase floors
+            BuildingQueryService buildingQueryService
     ) {
         this.buildingRepository = buildingRepository;
-        this.floors = floors;
-    }
-
-    public List<BuildingResponse> listBuildings(String statusFilter) {
-        List<BuildingEntity> buildings = statusFilter == null || statusFilter.isBlank()
-                ? buildingRepository.findAllByOrderByCreatedAtAsc()
-                : buildingRepository.findByStatusOrderByCreatedAtAsc(statusFilter);
-        return buildings.stream().map(this::toBuildingResponse).toList();
+        this.buildingQueryService = buildingQueryService;
     }
 
     @Transactional
-    public BuildingResponse createBuilding(BuildingCreateRequest request) {
+    public BuildingResult.Summary createBuilding(BuildingCreateCommand command) {
         BuildingEntity building = new BuildingEntity(
-                request.name(),
-                request.description(),
-                request.latitude(),
-                request.longitude()
+                command.name(),
+                command.description(),
+                command.latitude(),
+                command.longitude()
         );
-        return toBuildingResponse(buildingRepository.saveAndFlush(building));
-    }
-
-    public BuildingDetailResponse getBuilding(UUID buildingId) {
-        BuildingEntity building = requireBuilding(buildingId);
-        return new BuildingDetailResponse(
-                building.getBuildingId(),
-                building.getName(),
-                building.getDescription(),
-                building.getLatitude(),
-                building.getLongitude(),
-                BuildingStatus.valueOf(building.getStatus()),
-                building.getCreatedAt(),
-                building.getUpdatedAt(),
-                floors.listFloors(buildingId),
-                List.of()
-        );
+        return buildingQueryService.toSummary(buildingRepository.saveAndFlush(building));
     }
 
     @Transactional
-    public BuildingResponse updateBuilding(UUID buildingId, BuildingUpdateRequest request) {
+    public BuildingResult.Summary updateBuilding(UUID buildingId, BuildingUpdateCommand command) {
         BuildingEntity building = requireBuilding(buildingId);
-        building.updateProfile(request.name(), request.description(), request.latitude(), request.longitude());
-        return toBuildingResponse(buildingRepository.saveAndFlush(building));
+        building.updateProfile(command.name(), command.description(), command.latitude(), command.longitude());
+        return buildingQueryService.toSummary(buildingRepository.saveAndFlush(building));
     }
 
     @Transactional
@@ -78,31 +53,13 @@ public class BuildingUseCase {
     }
 
     @Transactional
-    public BuildingResponse patchStatus(UUID buildingId, BuildingStatusRequest request) {
+    public BuildingResult.Summary patchStatus(UUID buildingId, BuildingStatus status) {
         BuildingEntity building = requireBuilding(buildingId);
-        building.changeStatus(request.status().name());
-        return toBuildingResponse(buildingRepository.saveAndFlush(building));
+        building.changeStatus(status.name());
+        return buildingQueryService.toSummary(buildingRepository.saveAndFlush(building));
     }
 
     public BuildingEntity requireBuilding(UUID buildingId) {
-        return buildingRepository.findById(buildingId)
-                .orElseThrow(() -> notFound("BUILDING_NOT_FOUND", "building not found"));
-    }
-
-    private BuildingResponse toBuildingResponse(BuildingEntity building) {
-        return new BuildingResponse(
-                building.getBuildingId(),
-                building.getName(),
-                building.getDescription(),
-                building.getLatitude(),
-                building.getLongitude(),
-                BuildingStatus.valueOf(building.getStatus()),
-                building.getCreatedAt(),
-                building.getUpdatedAt()
-        );
-    }
-
-    private ClientApiException notFound(String code, String message) {
-        return new ClientApiException(HttpStatus.NOT_FOUND, code, message);
+        return buildingQueryService.requireBuilding(buildingId);
     }
 }

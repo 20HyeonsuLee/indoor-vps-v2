@@ -1,10 +1,9 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controller;
 
-import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.PoiDtos.*;
-
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.poi.PoiResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.poi.PoiUseCase;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,12 +22,12 @@ public class PoiController {
     }
 
     @GetMapping("/buildings/{buildingId}/pois")
-    public List<POIResponse> listPois(@PathVariable UUID buildingId) {
+    public List<PoiResult> listPois(@PathVariable UUID buildingId) {
         return service.listPois(buildingId);
     }
 
     @GetMapping("/buildings/{buildingId}/pois/search")
-    public List<POIResponse> searchPois(
+    public List<PoiResult> searchPois(
             @PathVariable UUID buildingId,
             @RequestParam(name = "query", required = false) String query
     ) {

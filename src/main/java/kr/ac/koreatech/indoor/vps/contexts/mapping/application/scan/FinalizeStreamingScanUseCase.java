@@ -1,7 +1,7 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
@@ -9,7 +9,6 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRe
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.FinalizedStreamingScan;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.ScanDtos.ScanFinalizeResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,13 +19,13 @@ import org.springframework.web.multipart.MultipartFile;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class FinalizeStreamingScanUseCase {
 
-    private final FloorUseCase floorService;
+    private final FloorQueryService floorService;
     private final ScanIngestRepository scanIngestRepository;
     private final FloorScanRepository floorScanRepository;
     private final StreamingScanStorage streamingScanStorage;
 
     public FinalizeStreamingScanUseCase(
-            FloorUseCase floorService,
+            FloorQueryService floorService,
             ScanIngestRepository scanIngestRepository,
             FloorScanRepository floorScanRepository,
             StreamingScanStorage streamingScanStorage
@@ -38,7 +37,7 @@ public class FinalizeStreamingScanUseCase {
     }
 
     @Transactional
-    public ScanFinalizeResponse execute(UUID scanId, MultipartFile manifest, MultipartFile metadata) {
+    public ScanFinalizeResult execute(UUID scanId, MultipartFile manifest, MultipartFile metadata) {
         FinalizedStreamingScan finalized = streamingScanStorage.finalizeScan(scanId, manifest, metadata);
         FloorEntity floor = floorService.requireFloor(finalized.floorId());
         ScanIngestEntity scan = scanIngestRepository.findById(scanId)
@@ -69,7 +68,7 @@ public class FinalizeStreamingScanUseCase {
         floorScan.updateStoredFile(fileName, finalized.fileSize(), "READY");
         floorScan.changeActive(true);
         floorScanRepository.saveAndFlush(floorScan);
-        return new ScanFinalizeResponse(
+        return new ScanFinalizeResult(
                 scanId,
                 finalized.floorId(),
                 "READY",

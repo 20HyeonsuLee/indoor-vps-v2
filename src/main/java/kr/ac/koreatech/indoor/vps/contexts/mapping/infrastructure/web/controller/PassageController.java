@@ -1,11 +1,10 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controller;
 
-import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.PassageDtos.*;
-
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.passage.PassageUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.passage.VerticalPassageResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,7 +21,7 @@ public class PassageController {
     }
 
     @GetMapping("/buildings/{buildingId}/passages")
-    public List<VerticalPassageResponse> listPassages(@PathVariable UUID buildingId) {
+    public List<VerticalPassageResult.Summary> listPassages(@PathVariable UUID buildingId) {
         return service.listPassages(buildingId);
     }
 }

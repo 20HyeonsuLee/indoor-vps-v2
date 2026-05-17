@@ -3,14 +3,13 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.ScanDtos.ProcessingStatusResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,12 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class ProcessFloorUseCase {
 
-    private final FloorUseCase floorService;
+    private final FloorQueryService floorService;
     private final ScanIngestRepository scanIngestRepository;
     private final BuildJobRepository buildJobRepository;
 
     public ProcessFloorUseCase(
-            FloorUseCase floorService,
+            FloorQueryService floorService,
             ScanIngestRepository scanIngestRepository,
             BuildJobRepository buildJobRepository
     ) {
@@ -36,7 +35,7 @@ public class ProcessFloorUseCase {
     }
 
     @Transactional
-    public ProcessingStatusResponse process(UUID floorId) {
+    public ProcessingStatusResult process(UUID floorId) {
         floorService.requireFloor(floorId);
         FloorScanEntity active = floorService.activeScan(floorId)
                 .orElseThrow(() -> new ClientApiException(HttpStatus.CONFLICT, "ACTIVE_SCAN_NOT_FOUND", "floor has no active scan"));
@@ -45,18 +44,18 @@ public class ProcessFloorUseCase {
         scan.changeBuildState(BuildState.pending);
         scan.attachBuildJob(job.getBuildJobId());
         scanIngestRepository.saveAndFlush(scan);
-        return new ProcessingStatusResponse(floorId, scan.getScanId(), job.getBuildJobId(), "QUEUED", 0.0, null);
+        return new ProcessingStatusResult(floorId, scan.getScanId(), job.getBuildJobId(), "QUEUED", 0.0, null);
     }
 
-    public ProcessingStatusResponse processStatus(UUID floorId) {
+    public ProcessingStatusResult processStatus(UUID floorId) {
         floorService.requireFloor(floorId);
         Optional<FloorScanEntity> active = floorService.activeScan(floorId);
         if (active.isEmpty()) {
-            return new ProcessingStatusResponse(floorId, null, null, "IDLE", null, null);
+            return new ProcessingStatusResult(floorId, null, null, "IDLE", null, null);
         }
         UUID scanId = active.get().getScan().getScanId();
         return buildJobRepository.findFirstByScan_ScanIdOrderByEnqueuedAtDesc(scanId)
-                .map(job -> new ProcessingStatusResponse(
+                .map(job -> new ProcessingStatusResult(
                         floorId,
                         scanId,
                         job.getBuildJobId(),
@@ -67,7 +66,7 @@ public class ProcessFloorUseCase {
                                 job.getFailureDetail()
                         ).orElse(null)
                 ))
-                .orElseGet(() -> new ProcessingStatusResponse(
+                .orElseGet(() -> new ProcessingStatusResult(
                         floorId,
                         scanId,
                         null,

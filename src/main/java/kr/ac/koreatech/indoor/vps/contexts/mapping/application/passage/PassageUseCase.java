@@ -1,7 +1,5 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.passage;
 
-import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.PassageDtos.*;
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -9,7 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingQueryService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -19,16 +17,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class PassageUseCase {
-    private final BuildingUseCase buildingUseCase;
+    private final BuildingQueryService buildingQuery;
     private final JdbcClient jdbcClient;
 
-    public PassageUseCase(BuildingUseCase buildingUseCase, JdbcClient jdbcClient) {
-        this.buildingUseCase = buildingUseCase;
+    public PassageUseCase(BuildingQueryService buildingQuery, JdbcClient jdbcClient) {
+        this.buildingQuery = buildingQuery;
         this.jdbcClient = jdbcClient;
     }
 
-    public List<VerticalPassageResponse> listPassages(UUID buildingId) {
-        buildingUseCase.requireBuilding(buildingId);
+    public List<VerticalPassageResult.Summary> listPassages(UUID buildingId) {
+        buildingQuery.requireBuilding(buildingId);
         Map<UUID, PassageAccumulator> passages = new LinkedHashMap<>();
         for (PassageRow row : fetchRows(buildingId)) {
             PassageAccumulator passage = passages.computeIfAbsent(
@@ -36,7 +34,7 @@ public class PassageUseCase {
                     ignored -> new PassageAccumulator(row)
             );
             if (row.stopId() != null) {
-                passage.segments.add(new PassageSegment(
+                passage.segments.add(new VerticalPassageResult.Segment(
                         row.stopId().toString(),
                         row.levelId(),
                         row.routeNodeId() == null ? null : row.routeNodeId().toString(),
@@ -48,7 +46,7 @@ public class PassageUseCase {
             }
         }
         return passages.values().stream()
-                .map(PassageAccumulator::toResponse)
+                .map(PassageAccumulator::toResult)
                 .toList();
     }
 
@@ -125,14 +123,14 @@ public class PassageUseCase {
 
     private static final class PassageAccumulator {
         private final PassageRow row;
-        private final List<PassageSegment> segments = new ArrayList<>();
+        private final List<VerticalPassageResult.Segment> segments = new ArrayList<>();
 
         private PassageAccumulator(PassageRow row) {
             this.row = row;
         }
 
-        private VerticalPassageResponse toResponse() {
-            return new VerticalPassageResponse(
+        private VerticalPassageResult.Summary toResult() {
+            return new VerticalPassageResult.Summary(
                     row.passageId(),
                     row.buildingId(),
                     row.connectorType(),

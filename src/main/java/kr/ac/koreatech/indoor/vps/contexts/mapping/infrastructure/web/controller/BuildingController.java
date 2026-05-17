@@ -6,6 +6,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingCreateCommand;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingQueryService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUpdateCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUseCase;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,33 +29,39 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "건물")
 public class BuildingController {
     private final BuildingUseCase service;
+    private final BuildingQueryService query;
 
-    public BuildingController(BuildingUseCase service) {
+    public BuildingController(BuildingUseCase service, BuildingQueryService query) {
         this.service = service;
+        this.query = query;
     }
 
     @GetMapping("/buildings")
-    public List<BuildingResponse> listBuildings(@RequestParam(name = "status", required = false) String status) {
-        return service.listBuildings(status);
+    public List<BuildingResult.Summary> listBuildings(@RequestParam(name = "status", required = false) String status) {
+        return query.listBuildings(status);
     }
 
     @PostMapping("/buildings")
     @ResponseStatus(HttpStatus.CREATED)
-    public BuildingResponse createBuilding(@Valid @RequestBody BuildingCreateRequest request) {
-        return service.createBuilding(request);
+    public BuildingResult.Summary createBuilding(@Valid @RequestBody BuildingCreateRequest request) {
+        return service.createBuilding(new BuildingCreateCommand(
+                request.name(), request.description(), request.latitude(), request.longitude()
+        ));
     }
 
     @GetMapping("/buildings/{buildingId}")
-    public BuildingDetailResponse getBuilding(@PathVariable UUID buildingId) {
-        return service.getBuilding(buildingId);
+    public BuildingResult.Detail getBuilding(@PathVariable UUID buildingId) {
+        return query.getBuilding(buildingId);
     }
 
     @PutMapping("/buildings/{buildingId}")
-    public BuildingResponse updateBuilding(
+    public BuildingResult.Summary updateBuilding(
             @PathVariable UUID buildingId,
             @RequestBody BuildingUpdateRequest request
     ) {
-        return service.updateBuilding(buildingId, request);
+        return service.updateBuilding(buildingId, new BuildingUpdateCommand(
+                request.name(), request.description(), request.latitude(), request.longitude()
+        ));
     }
 
     @DeleteMapping("/buildings/{buildingId}")
@@ -61,10 +71,10 @@ public class BuildingController {
     }
 
     @PatchMapping("/buildings/{buildingId}/status")
-    public BuildingResponse patchBuildingStatus(
+    public BuildingResult.Summary patchBuildingStatus(
             @PathVariable UUID buildingId,
             @Valid @RequestBody BuildingStatusRequest request
     ) {
-        return service.patchStatus(buildingId, request);
+        return service.patchStatus(buildingId, request.status());
     }
 }

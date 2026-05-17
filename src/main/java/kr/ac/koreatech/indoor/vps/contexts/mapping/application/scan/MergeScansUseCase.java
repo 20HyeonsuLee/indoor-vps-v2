@@ -5,17 +5,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.MergeScanBridgeRequest;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.BridgeContracts.MergeScanBridgeResponse;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.bridge.PythonBridgeClient;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.ScanDtos.MergedScanResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -26,28 +25,28 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class MergeScansUseCase {
 
-    private final FloorUseCase floorService;
+    private final FloorQueryService floorService;
     private final ScanIngestRepository scanIngestRepository;
     private final FloorScanRepository floorScanRepository;
-    private final PythonBridgeClient bridgeClient;
+    private final PythonBridge bridge;
     private final IndoorProperties properties;
 
     public MergeScansUseCase(
-            FloorUseCase floorService,
+            FloorQueryService floorService,
             ScanIngestRepository scanIngestRepository,
             FloorScanRepository floorScanRepository,
-            PythonBridgeClient bridgeClient,
+            PythonBridge bridge,
             IndoorProperties properties
     ) {
         this.floorService = floorService;
         this.scanIngestRepository = scanIngestRepository;
         this.floorScanRepository = floorScanRepository;
-        this.bridgeClient = bridgeClient;
+        this.bridge = bridge;
         this.properties = properties;
     }
 
     @Transactional
-    public MergedScanResponse merge(UUID floorId, List<UUID> chunkIds) {
+    public MergedScanResult merge(UUID floorId, List<UUID> chunkIds) {
         FloorEntity floor = floorService.requireFloor(floorId);
         if (chunkIds == null || chunkIds.isEmpty()) {
             return mergeStatus(floorId);
@@ -65,7 +64,7 @@ public class MergeScansUseCase {
 
         UUID mergedScanId = UUID.randomUUID();
         Path outputDir = properties.getStorageRoot().resolve("scans").resolve(mergedScanId.toString());
-        MergeScanBridgeResponse merge = bridgeClient.mergeScan(new MergeScanBridgeRequest(
+        MergeScanBridgeResponse merge = bridge.mergeScan(new MergeScanBridgeRequest(
                 floorId,
                 mergedScanId,
                 sources.stream()
@@ -92,23 +91,23 @@ public class MergeScansUseCase {
         floorScan.changeStatus("MERGED");
         floorScan.changeActive(true);
         floorScanRepository.saveAndFlush(floorScan);
-        return new MergedScanResponse(floorId, mergedScanId, "MERGED");
+        return new MergedScanResult(floorId, mergedScanId, "MERGED");
     }
 
-    public MergedScanResponse mergeStatus(UUID floorId) {
+    public MergedScanResult mergeStatus(UUID floorId) {
         floorService.requireFloor(floorId);
         return floorService.activeScan(floorId)
-                .map(scan -> new MergedScanResponse(floorId, scan.getScan().getScanId(), "MERGED"))
-                .orElseGet(() -> new MergedScanResponse(floorId, null, "IDLE"));
+                .map(scan -> new MergedScanResult(floorId, scan.getScan().getScanId(), "MERGED"))
+                .orElseGet(() -> new MergedScanResult(floorId, null, "IDLE"));
     }
 
-    private MergedScanResponse activateSingleMerge(UUID floorId, FloorScanEntity target) {
+    private MergedScanResult activateSingleMerge(UUID floorId, FloorScanEntity target) {
         floorScanRepository.deactivateForFloor(floorId);
         floorScanRepository.flush();
         target.changeActive(true);
         target.changeStatus("MERGED");
         floorScanRepository.saveAndFlush(target);
-        return new MergedScanResponse(floorId, target.getScan().getScanId(), "MERGED");
+        return new MergedScanResult(floorId, target.getScan().getScanId(), "MERGED");
     }
 
     private Path rtabmapDbPath(String storagePath) {

@@ -79,22 +79,24 @@ public class StreamingScanStorageAdapter implements StreamingScanStorage {
                     if (!Files.exists(framePath)) {
                         stateWriter.writeJson(framePath, frame);
                     }
-                    if (dbWriter.insertFrame(connection, frame)) {
+                    boolean frameInserted = dbWriter.insertFrame(connection, frame);
+                    if (frameInserted) {
                         framesApplied++;
-                    } else {
-                        framesSkipped++;
+                        continue;
                     }
+                    framesSkipped++;
                 }
                 for (FrameLinkPayload link : links) {
                     Path linkPath = linksDir(scanId).resolve(linkKey(link) + ".json");
                     if (!Files.exists(linkPath)) {
                         stateWriter.writeJson(linkPath, link);
                     }
-                    if (dbWriter.insertLink(connection, link)) {
+                    boolean linkInserted = dbWriter.insertLink(connection, link);
+                    if (linkInserted) {
                         linksApplied++;
-                    } else {
-                        linksSkipped++;
+                        continue;
                     }
+                    linksSkipped++;
                 }
             }
             int nodeCount = ScanDbStats.countTableRows(rtabmapDbPath(scanId), "Node").orElse(0);

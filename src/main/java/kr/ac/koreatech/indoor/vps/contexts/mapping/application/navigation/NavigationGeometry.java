@@ -3,24 +3,24 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Point;
 
-final class NavigationGeometry {
+public final class NavigationGeometry {
     private NavigationGeometry() {
     }
 
-    static double x(Point point) {
+    public static double x(Point point) {
         return point.getX();
     }
 
-    static double y(Point point) {
+    public static double y(Point point) {
         return point.getY();
     }
 
-    static double z(Point point) {
+    public static double z(Point point) {
         Coordinate coordinate = point.getCoordinate();
         return Double.isNaN(coordinate.getZ()) ? 0.0 : coordinate.getZ();
     }
 
-    static double distance(double ax, double ay, double az, double bx, double by, double bz) {
+    public static double distance(double ax, double ay, double az, double bx, double by, double bz) {
         double dx = ax - bx;
         double dy = ay - by;
         double dz = az - bz;
