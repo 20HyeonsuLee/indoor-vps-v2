@@ -1,15 +1,11 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeResponse;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
-import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
@@ -55,7 +51,7 @@ public class MergeScansUseCase {
         }
 
         UUID mergedScanId = UUID.randomUUID();
-        MergeScanBridgeResponse merge = mergeRunner.run(floorId, mergedScanId, sources);
+        MergeScanBridgeResponse merge = mergeRunner.run(new ScanMergeRunCommand(floorId, mergedScanId, sources));
 
         ScanIngestEntity scan = scanPersistence.saveScan(new ScanIngestEntity(
                 mergedScanId,

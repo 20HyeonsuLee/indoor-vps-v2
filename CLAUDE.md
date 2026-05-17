@@ -157,6 +157,9 @@ _project_meta:
     - id: ADR-009
       title: "Python entry는 pyproject.toml + uv 또는 main.py 둘 다 허용"
       rationale: "uv/pyproject.toml이 modern Python 표준이고 이미 uv.lock 채택. main.py 강제는 신규 lib 추가 비용 + 기존 자산 폐기 비용 큼. ProcessBuilder가 어느 entry든 호출 가능하므로 진입점 형식만 완화."
+    - id: ADR-010
+      title: "RTAB-Map SQLite 파일 읽기에 JdbcClient 직접 사용 허용 (앱 DataSource 비적용)"
+      rationale: "rtabmap.db는 외부 툴 산출물로 앱 DataSource(PostgreSQL)와 독립. JPA + 별도 EMF 설정 비용 과다. infrastructure/rtabmap/ 어댑터 읽기 전용 한정, Port/Adapter 분리 유지. ADR-007 JPA 원칙은 앱 DataSource 범위로 명시."
 
 _anchors:
   base_context_meta: &base_context_meta

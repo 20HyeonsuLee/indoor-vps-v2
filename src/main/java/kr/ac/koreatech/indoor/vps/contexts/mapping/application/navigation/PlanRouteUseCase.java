@@ -98,8 +98,8 @@ public class PlanRouteUseCase {
         RoutePosition destination = new RoutePosition(target.x(), target.y(), target.z(), target.floorLevel());
         steps.add(new PathStep(2, target.floorLevel(), destination, "Arrive", target.routeNodeId()));
         double distance = NavigationGeometry.distance(
-                command.startX(), command.startY(), command.startZ(),
-                target.x(), target.y(), target.z()
+                new Point3(command.startX(), command.startY(), command.startZ()),
+                new Point3(target.x(), target.y(), target.z())
         );
         return new PathfindingResult(
                 buildingId,

@@ -1,8 +1,6 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 
 import java.nio.file.Path;
-import java.util.List;
-import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeResponse;
@@ -27,12 +25,12 @@ public class ScanMergeRunner {
         this.properties = properties;
     }
 
-    public MergeScanBridgeResponse run(UUID floorId, UUID mergedScanId, List<FloorScanEntity> sources) {
-        Path outputDir = properties.getStorageRoot().resolve("scans").resolve(mergedScanId.toString());
+    public MergeScanBridgeResponse run(ScanMergeRunCommand cmd) {
+        Path outputDir = properties.getStorageRoot().resolve("scans").resolve(cmd.mergedScanId().toString());
         return bridge.mergeScan(new MergeScanBridgeRequest(
-                floorId,
-                mergedScanId,
-                sources.stream()
+                cmd.floorId(),
+                cmd.mergedScanId(),
+                cmd.sources().stream()
                         .map(source -> rtabmapDbPath(source.getScan().getStoragePath()).toString())
                         .toList(),
                 outputDir.toString()

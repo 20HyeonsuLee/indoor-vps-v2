@@ -8,6 +8,7 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorScanRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanArchiveStorage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,10 +24,16 @@ public class ScanPersistence {
 
     private final ScanIngestRepository scanIngestRepository;
     private final FloorScanRepository floorScanRepository;
+    private final ScanArchiveStorage scanArchiveStorage;
 
-    public ScanPersistence(ScanIngestRepository scanIngestRepository, FloorScanRepository floorScanRepository) {
+    public ScanPersistence(
+            ScanIngestRepository scanIngestRepository,
+            FloorScanRepository floorScanRepository,
+            ScanArchiveStorage scanArchiveStorage
+    ) {
         this.scanIngestRepository = scanIngestRepository;
         this.floorScanRepository = floorScanRepository;
+        this.scanArchiveStorage = scanArchiveStorage;
     }
 
     public boolean scanExists(UUID scanId) {
@@ -82,5 +89,24 @@ public class ScanPersistence {
     @Transactional
     public FloorScanEntity saveScanEntity(FloorScanEntity floorScan) {
         return floorScanRepository.saveAndFlush(floorScan);
+    }
+
+    public List<FloorScanEntity> findByFloorOrdered(UUID floorId) {
+        return floorScanRepository.findByFloor_FloorIdOrderByUploadOrderAscCreatedAtAsc(floorId);
+    }
+
+    public Optional<FloorScanEntity> findChunk(UUID floorId, UUID chunkId) {
+        return floorScanRepository.findByFloor_FloorIdAndFloorScanId(floorId, chunkId);
+    }
+
+    @Transactional
+    public void deleteChunkIfOrphan(FloorScanEntity floorScan) {
+        UUID scanId = floorScan.getScan().getScanId();
+        floorScanRepository.delete(floorScan);
+        floorScanRepository.flush();
+        if (!floorScanRepository.existsByScan_ScanId(scanId)) {
+            scanIngestRepository.deleteById(scanId);
+            scanArchiveStorage.deleteScan(scanId);
+        }
     }
 }
