@@ -1,0 +1,13 @@
+.git
+.gradle
+build
+var
+logs
+tmp
+backups
+test-fixtures/captured
+.idea
+.vscode
+*.iml
+**/__pycache__
+**/*.pyc

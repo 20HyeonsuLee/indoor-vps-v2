@@ -1,0 +1,22 @@
+services:
+  db:
+    environment:
+      POSTGRES_DB: indoor
+      POSTGRES_USER: indoor
+      POSTGRES_PASSWORD: indoor
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.local
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      POSTGRES_USER: indoor
+      POSTGRES_PASSWORD: indoor
+      PYTHON_ML_DEVICE: "${PYTHON_ML_DEVICE:-cpu}"
+    volumes:
+      - ./var/storage:/data/storage
+      - ./test-fixtures/captured:/app/test-fixtures/captured
+
+volumes:
+  db-data:

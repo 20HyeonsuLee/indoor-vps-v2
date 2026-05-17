@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: indoor-vps-v2
+  profiles:
+    default: local
+  servlet:
+    multipart:
+      max-file-size: ${MULTIPART_MAX_FILE_SIZE:2GB}
+      max-request-size: ${MULTIPART_MAX_REQUEST_SIZE:2GB}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+server:
+  port: ${SERVER_PORT:8080}
+
+springdoc:
+  swagger-ui:
+    path: /docs
+  api-docs:
+    path: /openapi.json
+
+indoor:
+  python:
+    executable: ${PYTHON_EXECUTABLE:python3}
+    bridge-script: ${PYTHON_BRIDGE_SCRIPT:./scripts/python_bridge/bridge_entry.py}
+    backend-source: ${PYTHON_BACKEND_SRC:./python/legacy_backend/src}
+    timeout-seconds: ${PYTHON_BRIDGE_TIMEOUT_SECONDS:60}
+  rtabmap:
+    reprocess:
+      enabled: ${RTABMAP_REPROCESS_ENABLED:true}
+      executable: ${RTABMAP_REPROCESS_BIN:rtabmap-reprocess}
+      timeout-seconds: ${RTABMAP_REPROCESS_TIMEOUT_SECONDS:300}
+  build-worker:
+    enabled: ${BUILD_WORKER_ENABLED:true}
+    poll-interval-ms: ${BUILD_WORKER_POLL_INTERVAL_MS:2000}
+    batch-size: ${BUILD_WORKER_BATCH_SIZE:1}

@@ -1,11 +1,14 @@
 .gradle/
-build/
+/build/
+target/
 out/
 .idea/
 .vscode/
 *.iml
 
 .DS_Store
+__pycache__/
+*.py[cod]
 
 backups/*.tar.gz
 backups/*.tgz
@@ -14,5 +17,6 @@ backups/*.zip
 var/
 logs/
 tmp/
+test-fixtures/captured/
 
 src/main/resources/application-local.yml

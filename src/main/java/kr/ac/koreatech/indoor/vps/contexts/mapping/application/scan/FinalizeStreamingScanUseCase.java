@@ -1,0 +1,64 @@
+package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
+
+import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.FinalizedStreamingScan;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+@ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
+public class FinalizeStreamingScanUseCase {
+
+    private final FloorQueryService floorService;
+    private final ScanPersistence scanPersistence;
+    private final StreamingScanStorage streamingScanStorage;
+
+    public FinalizeStreamingScanUseCase(
+            FloorQueryService floorService,
+            ScanPersistence scanPersistence,
+            StreamingScanStorage streamingScanStorage
+    ) {
+        this.floorService = floorService;
+        this.scanPersistence = scanPersistence;
+        this.streamingScanStorage = streamingScanStorage;
+    }
+
+    @Transactional
+    public ScanFinalizeResult execute(FinalizeStreamingScanCommand command) {
+        UUID scanId = command.scanId();
+        FinalizedStreamingScan finalized = streamingScanStorage.finalizeScan(scanId, command.manifest(), command.metadata());
+        FloorEntity floor = floorService.requireFloor(finalized.floorId());
+        ScanIngestEntity scan = scanPersistence.findScan(scanId)
+                .map(existing -> {
+                    existing.replacePayload(finalized.payloadSha256(), finalized.storagePath(), finalized.deviceInfo());
+                    return existing;
+                })
+                .orElseGet(() -> new ScanIngestEntity(
+                        scanId,
+                        finalized.payloadSha256(),
+                        finalized.storagePath(),
+                        finalized.deviceInfo()
+                ));
+        ScanIngestEntity persistedScan = scanPersistence.saveScan(scan);
+        String fileName = ScanNaming.streamingScanFileName(scanId);
+        scanPersistence.saveFloorScanActive(
+                finalized.floorId(), floor, persistedScan,
+                fileName, finalized.fileSize(), "READY"
+        );
+        return new ScanFinalizeResult(
+                scanId,
+                finalized.floorId(),
+                "READY",
+                finalized.nodeCount(),
+                finalized.keyframeCount(),
+                finalized.poiMarkCount(),
+                finalized.payloadSha256()
+        );
+    }
+}
