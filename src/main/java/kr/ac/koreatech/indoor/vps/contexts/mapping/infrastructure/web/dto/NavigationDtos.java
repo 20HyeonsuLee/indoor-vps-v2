@@ -42,6 +42,7 @@ public final class NavigationDtos {
 
     public record PathfindingRequest(
             UUID startScanId,
+            UUID startAreaId,
             Integer startFloorLevel,
             double startX,
             double startY,

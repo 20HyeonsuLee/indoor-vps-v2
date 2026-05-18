@@ -3,8 +3,6 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controlle
 import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.MapDtos.*;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFloorMapUseCase;
@@ -56,7 +54,7 @@ public class FloorMapController {
                 result.buildJobId(),
                 FloorMapCoordinateSystem.worldMeters(),
                 floorMapMapper.floorMapBounds(result.nodes()),
-                Map.of("type", "FeatureCollection", "features", List.of()),
+                floorMapMapper.polygonFeatureCollection(result.polygons()),
                 result.nodes().stream().map(floorMapMapper::floorMapNode).toList(),
                 result.edges().stream().map(floorMapMapper::floorMapEdge).toList(),
                 result.etag()

@@ -26,8 +26,13 @@ public interface ScanMetadataReader {
             double tz,
             String connectHint,
             Long connectNodeId,
-            Long markSessionId
+            Long markSessionId,
+            Double widthM
     ) {
+        public BranchMarkRow(long id, int keyframeSeq, String nodeType, double tx, double ty, double tz,
+                String connectHint, Long connectNodeId, Long markSessionId) {
+            this(id, keyframeSeq, nodeType, tx, ty, tz, connectHint, connectNodeId, markSessionId, null);
+        }
     }
 
     record BranchEdgeRow(

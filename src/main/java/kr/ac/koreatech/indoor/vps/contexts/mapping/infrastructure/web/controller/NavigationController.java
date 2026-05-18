@@ -61,6 +61,7 @@ public class NavigationController {
     ) {
         PathfindingResult result = planRouteUseCase.pathfinding(buildingId, new PathfindingCommand(
                 request.startScanId(),
+                request.startAreaId(),
                 request.startFloorLevel(),
                 request.startX(),
                 request.startY(),

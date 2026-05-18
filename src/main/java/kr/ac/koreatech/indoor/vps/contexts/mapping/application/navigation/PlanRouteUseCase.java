@@ -64,8 +64,16 @@ public class PlanRouteUseCase {
         steps.add(new PathStep(1, command.startFloorLevel(), start, "Start", null));
         if (target.routeNodeId() != null) {
             CompositeGraph graph = buildingRouteGraphProvider.build(buildingId);
+            List<RouteNode> nearestCandidates = command.startAreaId() == null
+                    ? graph.nodes()
+                    : graph.nodes().stream()
+                            .filter(n -> command.startAreaId().equals(n.areaId()))
+                            .toList();
+            if (nearestCandidates.isEmpty()) {
+                nearestCandidates = graph.nodes();
+            }
             UUID nearestNode = graphService.nearestNode(
-                    graph.nodes(),
+                    nearestCandidates,
                     new Point3(command.startX(), command.startY(), command.startZ())
             );
             if (nearestNode != null) {

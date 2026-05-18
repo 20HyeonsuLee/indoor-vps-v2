@@ -4,11 +4,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaPolygonEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapNodeEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteEdge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteNode;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorAreaPolygonRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapEdgeRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapNodeRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -28,17 +30,20 @@ public class GraphQueryFacade {
     private final MapNodeRepository mapNodeRepository;
     private final MapEdgeRepository mapEdgeRepository;
     private final BuildJobRepository buildJobRepository;
+    private final FloorAreaPolygonRepository polygonRepository;
     private final RouteGraphMapper graphMapper;
 
     public GraphQueryFacade(
             MapNodeRepository mapNodeRepository,
             MapEdgeRepository mapEdgeRepository,
             BuildJobRepository buildJobRepository,
+            FloorAreaPolygonRepository polygonRepository,
             RouteGraphMapper graphMapper
     ) {
         this.mapNodeRepository = mapNodeRepository;
         this.mapEdgeRepository = mapEdgeRepository;
         this.buildJobRepository = buildJobRepository;
+        this.polygonRepository = polygonRepository;
         this.graphMapper = graphMapper;
     }
 
@@ -56,6 +61,10 @@ public class GraphQueryFacade {
 
     public List<MapEdgeEntity> edgeEntities(UUID scanId) {
         return mapEdgeRepository.findByScanIdAndStaleFalseOrderByEdgeId(scanId);
+    }
+
+    public List<FloorAreaPolygonEntity> polygonEntities(UUID scanId) {
+        return polygonRepository.findByScanIdOrderByAreaId(scanId);
     }
 
     public Optional<UUID> latestBuildJobId(UUID scanId) {

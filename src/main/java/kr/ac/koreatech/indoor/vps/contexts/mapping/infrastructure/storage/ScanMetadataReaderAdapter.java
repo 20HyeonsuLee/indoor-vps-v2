@@ -86,7 +86,7 @@ public class ScanMetadataReaderAdapter implements ScanMetadataReader {
     private List<BranchMarkRow> readBranchMarks(JdbcClient jdbc) {
         return jdbc.sql("""
                 SELECT id, keyframe_seq, node_type, tx, ty, tz,
-                       connect_hint, connect_node_id, mark_session_id
+                       connect_hint, connect_node_id, mark_session_id, width_m
                 FROM branch_mark
                 ORDER BY id
                 """)
@@ -95,6 +95,8 @@ public class ScanMetadataReaderAdapter implements ScanMetadataReader {
                     Long connectNodeId = rs.wasNull() ? null : connectNodeIdVal;
                     long markSessionIdVal = rs.getLong("mark_session_id");
                     Long markSessionId = rs.wasNull() ? null : markSessionIdVal;
+                    double widthVal = rs.getDouble("width_m");
+                    Double widthM = rs.wasNull() ? null : widthVal;
                     return new BranchMarkRow(
                             rs.getLong("id"),
                             rs.getInt("keyframe_seq"),
@@ -104,7 +106,8 @@ public class ScanMetadataReaderAdapter implements ScanMetadataReader {
                             rs.getDouble("tz"),
                             rs.getString("connect_hint"),
                             connectNodeId,
-                            markSessionId
+                            markSessionId,
+                            widthM
                     );
                 })
                 .list();

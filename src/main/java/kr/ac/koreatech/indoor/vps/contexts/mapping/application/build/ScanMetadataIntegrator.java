@@ -73,7 +73,10 @@ class ScanMetadataIntegrator {
 
     IntegrationResult integrate(UUID scanId, UUID buildJobId, UUID areaId, ScanMetadata metadata) {
         SessionInfo session = metadata.session();
-        FloorAreaEntity area = floorAreaRepository.findById(areaId).orElse(null);
+        FloorAreaEntity area = floorAreaRepository.findById(areaId).orElseThrow(() ->
+                new IllegalStateException("FloorArea not found for build: " + areaId));
+        FloorEntity floor = area.getFloor();
+        BuildingEntity building = floor.getBuilding();
 
         List<MapNodeEntity> nodes = new ArrayList<>();
         List<MapEdgeEntity> edges = new ArrayList<>();
@@ -89,6 +92,9 @@ class ScanMetadataIntegrator {
         edgeSnapper.snap(scanId, buildJobId, areaId, corridorById, edges, nodes);
 
         buildPolygons(scanId, buildJobId, metadata.branchMarks(), metadata.branchEdges(),
+                session, area, polygons);
+
+        buildCorridorStrips(scanId, buildJobId, metadata.branchMarks(), metadata.branchEdges(),
                 session, area, polygons);
 
         applyPoiMarks(metadata.poiMarks(), session, scanId, buildJobId, areaId,
@@ -170,7 +176,7 @@ class ScanMetadataIntegrator {
             FloorAreaEntity area,
             List<FloorAreaPolygonEntity> polygons
     ) {
-        FloorEntity floor = resolveFloor(session).orElse(null);
+        FloorEntity floor = area.getFloor();
 
         Map<String, List<BranchMarkRow>> cornersBySession = new HashMap<>();
         for (BranchMarkRow mark : allMarks) {
@@ -216,6 +222,81 @@ class ScanMetadataIntegrator {
         }
     }
 
+    private void buildCorridorStrips(
+            UUID scanId,
+            UUID buildJobId,
+            List<BranchMarkRow> allMarks,
+            List<BranchEdgeRow> branchEdges,
+            SessionInfo session,
+            FloorAreaEntity area,
+            List<FloorAreaPolygonEntity> polygons
+    ) {
+        FloorEntity floor = area.getFloor();
+        Map<Long, BranchMarkRow> markById = new HashMap<>();
+        for (BranchMarkRow m : allMarks) {
+            markById.put(m.id(), m);
+        }
+        for (BranchEdgeRow edge : branchEdges) {
+            if (!KIND_SEQUENTIAL.equals(edge.kind())) {
+                continue;
+            }
+            BranchMarkRow from = markById.get(edge.fromMarkId());
+            BranchMarkRow to = markById.get(edge.toMarkId());
+            if (from == null || to == null) {
+                continue;
+            }
+            if (!"corridor".equals(from.nodeType()) || !"corridor".equals(to.nodeType())) {
+                continue;
+            }
+            Double fromW = from.widthM();
+            Double toW = to.widthM();
+            if (fromW == null && toW == null) {
+                continue;
+            }
+            double width = fromW == null ? toW : (toW == null ? fromW : (fromW + toW) / 2.0);
+            if (width <= 0.0) {
+                continue;
+            }
+            Polygon strip = corridorStrip(from, to, width);
+            if (strip == null) {
+                continue;
+            }
+            polygons.add(FloorAreaPolygonEntity.create(
+                    deterministicUuid("polygon:corridor-strip:" + scanId + ":" + edge.id()),
+                    scanId,
+                    buildJobId,
+                    floor,
+                    area,
+                    "corridor-strip:" + edge.id(),
+                    strip,
+                    List.of(from.id(), to.id())
+            ));
+        }
+    }
+
+    private Polygon corridorStrip(BranchMarkRow from, BranchMarkRow to, double width) {
+        Point3 p1 = ArKitToRtabmap.convert(from.tx(), from.ty(), from.tz());
+        Point3 p2 = ArKitToRtabmap.convert(to.tx(), to.ty(), to.tz());
+        double dx = p2.x() - p1.x();
+        double dy = p2.y() - p1.y();
+        double len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-6) {
+            return null;
+        }
+        double ux = dx / len;
+        double uy = dy / len;
+        double nx = -uy;
+        double ny = ux;
+        double half = width / 2.0;
+        double z = (p1.z() + p2.z()) / 2.0;
+        Coordinate c1 = new Coordinate(p1.x() - nx * half, p1.y() - ny * half, z);
+        Coordinate c2 = new Coordinate(p2.x() - nx * half, p2.y() - ny * half, z);
+        Coordinate c3 = new Coordinate(p2.x() + nx * half, p2.y() + ny * half, z);
+        Coordinate c4 = new Coordinate(p1.x() + nx * half, p1.y() + ny * half, z);
+        LinearRing ring = geometryFactory.createLinearRing(new Coordinate[]{c1, c2, c3, c4, c1});
+        return geometryFactory.createPolygon(ring);
+    }
+
     private Coordinate[] buildPolygonCoords(List<BranchMarkRow> corners, boolean closedHint) {
         List<Coordinate> coords = new ArrayList<>();
         for (BranchMarkRow corner : corners) {
@@ -243,8 +324,8 @@ class ScanMetadataIntegrator {
             List<MapEdgeEntity> edges,
             List<PoiCanonicalEntity> pois
     ) {
-        BuildingEntity building = resolveBuilding(session).orElse(null);
-        FloorEntity floor = resolveFloor(session).orElse(null);
+        BuildingEntity building = area.getFloor().getBuilding();
+        FloorEntity floor = area.getFloor();
 
         for (PoiMarkRow mark : marks) {
             Point3 rtPos = ArKitToRtabmap.convert(mark.tx(), mark.ty(), mark.tz());
@@ -289,10 +370,7 @@ class ScanMetadataIntegrator {
             List<PoiCanonicalEntity> pois,
             List<VerticalConnectorStopEntity> stops
     ) {
-        BuildingEntity building = resolveBuilding(session).orElse(null);
-        if (building == null) {
-            return;
-        }
+        BuildingEntity building = area.getFloor().getBuilding();
 
         Set<String> seenStopKeys = new HashSet<>();
         String areaKey = area == null ? "" : area.getAreaId().toString();
@@ -314,7 +392,7 @@ class ScanMetadataIntegrator {
                     deterministicUuid("interfloor-poi:" + scanId + ":" + mark.id()),
                     scanId,
                     building,
-                    resolveFloor(session).orElse(null),
+                    area.getFloor(),
                     area,
                     connectorKey,
                     mark.connectorType() != null ? mark.connectorType() : "unknown",
