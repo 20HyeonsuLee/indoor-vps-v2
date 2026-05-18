@@ -64,6 +64,7 @@ public class FixtureCaptureService {
 
     public CaptureRecord captureLocalizeImages(
             List<MultipartFile> images,
+            List<MultipartFile> depths,
             String buildingId,
             String mapId
     ) {
@@ -72,28 +73,35 @@ public class FixtureCaptureService {
         }
         try {
             Path directory = newCaptureDirectory("localize", buildingId != null ? buildingId : mapId);
-            Path imageDirectory = directory.resolve("images");
-            List<CapturedFile> files = new ArrayList<>();
-            if (images != null) {
-                for (int i = 0; i < images.size(); i++) {
-                    MultipartFile image = images.get(i);
-                    if (image == null) {
-                        continue;
-                    }
-                    files.add(fileIo.copyMultipart(image, imageDirectory.resolve("%02d".formatted(i))));
-                }
-            }
+            List<CapturedFile> imgFiles = copyMultiparts(images, directory.resolve("images"));
+            List<CapturedFile> depthFiles = copyMultiparts(depths, directory.resolve("depths"));
             fileIo.writeJson(directory.resolve("request.json"), mapOf(
                     "type", "slam-localize",
                     "capturedAt", Instant.now().toString(),
                     "buildingId", buildingId,
                     "mapId", mapId,
-                    "images", files
+                    "images", imgFiles,
+                    "depths", depthFiles
             ));
             return new CaptureRecord(true, directory);
         } catch (IOException e) {
             throw captureFailed(e);
         }
+    }
+
+    private List<CapturedFile> copyMultiparts(List<MultipartFile> files, Path targetDir) throws IOException {
+        List<CapturedFile> out = new ArrayList<>();
+        if (files == null) {
+            return out;
+        }
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile f = files.get(i);
+            if (f == null || f.isEmpty()) {
+                continue;
+            }
+            out.add(fileIo.copyMultipart(f, targetDir.resolve("%02d".formatted(i))));
+        }
+        return out;
     }
 
     public void writeResponse(CaptureRecord capture, Object response) {

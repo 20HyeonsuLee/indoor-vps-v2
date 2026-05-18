@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.SlamLocalizationService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand.ImagePayload;
@@ -24,6 +26,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/slam")
 @Tag(name = "SLAM 위치추정")
 public class SlamController {
+    private static final Logger log = LoggerFactory.getLogger(SlamController.class);
+
     private final SlamLocalizationService localizationService;
     private final FixtureCaptureService fixtureCapture;
 
@@ -40,7 +44,11 @@ public class SlamController {
             @RequestParam(name = "map_id", required = false) String mapId,
             @RequestParam(name = "floor_id", required = false) String floorId
     ) {
-        CaptureRecord capture = fixtureCapture.captureLocalizeImages(images, buildingId, mapId);
+        CaptureRecord capture = fixtureCapture.captureLocalizeImages(
+                images, depths.orElse(null), buildingId, mapId);
+        int depthCount = depths.map(List::size).orElse(0);
+        log.info("[localize] request images={} depths={} buildingId={} floorId={}",
+                images == null ? 0 : images.size(), depthCount, buildingId, floorId);
         try {
             LocalizeCommand command = new LocalizeCommand(
                     toImagePayloads(images),
@@ -48,6 +56,8 @@ public class SlamController {
                     buildingId, mapId, floorId);
             SLAMLocalizeResult result = localizationService.localize(command);
             SLAMLocalizeResponse response = toResponse(result);
+            log.info("[localize] result method={} confidence={} matches={}",
+                    result.methodUsed(), result.confidence(), result.numMatches());
             fixtureCapture.writeResponse(capture, response);
             return response;
         } catch (RuntimeException e) {
@@ -97,6 +107,7 @@ public class SlamController {
                 result.confidence(),
                 result.numMatches(),
                 result.matchedImageIndex(),
+                result.methodUsed(),
                 result.floorId(),
                 result.areaId(),
                 result.floorLevel()

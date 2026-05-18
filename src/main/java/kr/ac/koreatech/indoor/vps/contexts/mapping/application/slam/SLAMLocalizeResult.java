@@ -7,6 +7,7 @@ public record SLAMLocalizeResult(
         double confidence,
         int numMatches,
         int matchedImageIndex,
+        String methodUsed,
         String floorId,
         String areaId,
         int floorLevel

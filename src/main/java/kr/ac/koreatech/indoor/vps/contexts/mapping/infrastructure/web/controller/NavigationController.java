@@ -60,7 +60,6 @@ public class NavigationController {
             @Valid @RequestBody PathfindingRequest request
     ) {
         PathfindingResult result = planRouteUseCase.pathfinding(buildingId, new PathfindingCommand(
-                request.startScanId(),
                 request.startAreaId(),
                 request.startFloorLevel(),
                 request.startX(),

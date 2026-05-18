@@ -11,6 +11,7 @@ public final class SlamDtos {
             double confidence,
             int numMatches,
             int matchedImageIndex,
+            String methodUsed,
             String floorId,
             String areaId,
             int floorLevel

@@ -158,10 +158,28 @@ class SuperPointEngine:
             # for the RGBD (3D-3D) path. None → 2D-3D PnP fallback.
             q_rtab_3d = None
             if depths is not None and img_idx < len(depths) and depths[img_idx]:
+                blob_size = len(depths[img_idx])
                 depth_m = decode_depth_meters(depths[img_idx])
                 if depth_m is not None:
                     q_rtab_3d = lift_kps_camera_frame(
                         q_kps, depth_m, K, image_w, image_h
+                    )
+                    n_valid = int(np.sum(~np.isnan(q_rtab_3d).any(axis=1))) if q_rtab_3d is not None else 0
+                    finite = depth_m[np.isfinite(depth_m)]
+                    d_stats = (
+                        f"depth_m_range[{finite.min():.2f},{finite.max():.2f}] "
+                        f"depth_m_median={float(np.median(finite)):.2f}"
+                        if finite.size else "depth_all_nan"
+                    )
+                    logger.warning(
+                        f"[RGBD-debug] img_idx={img_idx} depth_blob={blob_size}B "
+                        f"depth_shape={depth_m.shape} {d_stats} "
+                        f"kp={len(q_kps)} q_rtab_3d_valid={n_valid}"
+                    )
+                else:
+                    logger.warning(
+                        f"[RGBD-debug] img_idx={img_idx} depth_blob={blob_size}B "
+                        f"decode_depth_meters returned None — depth format mismatch"
                     )
 
             from .global_descriptor import GlobalDescExtractor
@@ -182,13 +200,38 @@ class SuperPointEngine:
                 if len(matches) < 4:
                     continue
 
+                # Compute keyframe centroid (avg world3d ≠ NaN) for diagnostic.
+                valid_w_mask = ~np.isnan(world3d).any(axis=1)
+                w_centroid = (
+                    world3d[valid_w_mask].mean(axis=0)
+                    if int(valid_w_mask.sum()) > 0
+                    else np.array([float('nan')] * 3)
+                )
                 # --- RGBD path: 3D-3D rigid alignment when query depth available ---
                 if q_rtab_3d is not None:
                     rgbd = self._rgbd_estimate(matches, q_rtab_3d, world3d)
+                    if rgbd is None:
+                        # Pre-check what made it fail
+                        valid_q = ~np.isnan(q_rtab_3d).any(axis=1)
+                        valid_w = ~np.isnan(world3d).any(axis=1)
+                        pair_ok = 0
+                        for qi, di in matches:
+                            if valid_q[qi] and valid_w[di]:
+                                pair_ok += 1
+                        logger.warning(
+                            f"[RGBD-debug] img_idx={img_idx} node={node_id} "
+                            f"matches={len(matches)} valid_pairs={pair_ok} "
+                            f"→ rgbd_estimate=None, fallback to PnP"
+                        )
                     if rgbd is not None:
                         n_in, R_cw, t_cw = rgbd
                         confidence = min(0.99, max(0.01, n_in / max(len(matches), 1)))
                         qx, qy, qz, qw = _rotation_to_quat(R_cw)
+                        logger.warning(
+                            f"[RGBD-debug] WIN node={node_id} kf_centroid=("
+                            f"{w_centroid[0]:.2f},{w_centroid[1]:.2f},{w_centroid[2]:.2f}) "
+                            f"→ pose t=({t_cw[0]:.2f},{t_cw[1]:.2f},{t_cw[2]:.2f}) inliers={n_in}"
+                        )
                         candidate = {
                             'num_matches': n_in,
                             'confidence': confidence,
@@ -230,12 +273,20 @@ class SuperPointEngine:
                     continue
 
                 n_in = len(inliers)
-                # confidence = inlier ratio. wrong-keyframe match 자동 reject.
-                # 이번 세션 검증: lenient (4) 시 wrong location 자신있게 응답.
-                # 8 + 0.30 이 wrong-match 차단의 안전 임계.
                 _conf_local = n_in / max(len(pts_3d), 1)
                 if _conf_local < 0.30:
                     continue
+
+                # RANSAC EPNP는 algebraic minimum이라 sub-pixel 정확도 부족. inlier
+                # 셋에 대해 Levenberg-Marquardt iterative refinement 적용해 reprojection
+                # error를 픽셀 단위 → sub-pixel로 좁힘.
+                inlier_idx = inliers.ravel()
+                pts_3d_in = pts_3d[inlier_idx]
+                pts_2d_in = pts_2d[inlier_idx]
+                rvec, tvec = cv2.solvePnPRefineLM(
+                    pts_3d_in, pts_2d_in, K, None, rvec, tvec,
+                    criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 50, 1e-6),
+                )
 
                 # Convert PnP result to RTABMap world pose
                 # (same convention as RTABMapEngine / map_manager)
@@ -287,15 +338,39 @@ class SuperPointEngine:
             pts_q.append(q)
             pts_w.append(w)
         if len(pts_q) < 6:
+            logger.warning(f"[RGBD-debug] _rgbd_estimate: valid pairs {len(pts_q)} < 6")
             return None
         pts_q = np.asarray(pts_q, dtype=np.float64)
         pts_w = np.asarray(pts_w, dtype=np.float64)
-        result = _ransac_3d3d(pts_q, pts_w, threshold=0.10, iterations=500, min_final_inliers=6)
+        # Range diagnostic — depth in m should typically be 0.1~30. world3d in
+        # rtabmap world coords spans a few~tens of meters.
+        logger.warning(
+            f"[RGBD-debug] _rgbd_estimate: pairs={len(pts_q)} "
+            f"q_x[{pts_q[:,0].min():.2f},{pts_q[:,0].max():.2f}] "
+            f"q_y[{pts_q[:,1].min():.2f},{pts_q[:,1].max():.2f}] "
+            f"q_z[{pts_q[:,2].min():.2f},{pts_q[:,2].max():.2f}] "
+            f"w_x[{pts_w[:,0].min():.2f},{pts_w[:,0].max():.2f}] "
+            f"w_y[{pts_w[:,1].min():.2f},{pts_w[:,1].max():.2f}] "
+            f"w_z[{pts_w[:,2].min():.2f},{pts_w[:,2].max():.2f}]"
+        )
+        # LiDAR depth(±10cm 노이즈) + SP feature 위치 오차 + world3d 누적 오차로
+        # 실측 데이터에서 매칭당 3D 잔차가 30~50cm까지 흔함. 0.50m로 완화.
+        result = _ransac_3d3d(pts_q, pts_w, threshold=0.50, iterations=500, min_final_inliers=6)
         if result is None:
+            logger.warning(
+                f"[RGBD-debug] _ransac_3d3d returned None — "
+                f"either no inlier set >= 6 or RANSAC could not find consistent transform"
+            )
             return None
         R, t, inliers = result
-        # confidence guard — inlier ratio threshold mirrors PnP path.
-        if len(inliers) / max(len(pts_q), 1) < 0.30:
+        ratio = len(inliers) / max(len(pts_q), 1)
+        # SP 매칭은 PnP와 달리 3D-3D Horn 검증에서 false positive 매칭 비율이
+        # 높음(매칭 정밀도 ~수픽셀, 3D 노이즈 누적). 실측 환경에서 절반 이상이
+        # outlier로 reject되는 게 정상이라 10% 정도면 transform 신뢰 가능.
+        if ratio < 0.10:
+            logger.warning(
+                f"[RGBD-debug] inlier ratio {ratio:.2%} < 10% (inliers={len(inliers)} / pairs={len(pts_q)})"
+            )
             return None
         return len(inliers), R, t
 

@@ -97,6 +97,7 @@ public class SlamLocalizationService {
                     response.confidence(),
                     response.numMatches(),
                     response.matchedImageIndex(),
+                    response.methodUsed(),
                     response.floorId(),
                     response.areaId(),
                     response.floorLevel()

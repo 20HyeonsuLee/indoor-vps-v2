@@ -120,12 +120,30 @@ def _load_gray_float(conn: sqlite3.Connection, node_id: int) -> np.ndarray | Non
 
 
 def decode_depth_meters(depth_blob) -> np.ndarray | None:
-    """PNG bytes → (H, W) float32 depth in meters. iOS LiDAR layout (RGBA float32)
-    우선, fallback으로 16-bit mm 또는 32-bit float single-channel."""
+    """Depth blob → (H, W) float32 depth in meters.
+
+    지원 포맷:
+      1) PNG 인코딩된 RGBA 8-bit — 4 bytes를 float32로 재해석 (iOS LiDAR 일반 스캔 저장 형식).
+      2) PNG 16-bit single-channel — mm 단위 가정, 1000으로 나눠 m.
+      3) PNG 32-bit float single-channel — 그대로 m.
+      4) **Raw float32 buffer** — 256×192 또는 192×256 등 알려진 iOS LiDAR 해상도 매치 시 직접
+         np.frombuffer로 reshape. localize 요청에서 클라가 PNG 인코딩 없이 raw buffer를 보내는
+         경우 대응.
+    """
     if not depth_blob:
         return None
-    arr = np.frombuffer(bytes(depth_blob), dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+    raw = bytes(depth_blob)
+    # (4) Raw float32 buffer fast path — known iOS LiDAR resolutions.
+    n_f32 = len(raw) // 4
+    if len(raw) % 4 == 0:
+        for h, w in ((192, 256), (256, 192), (180, 240), (240, 180)):
+            if h * w == n_f32:
+                arr = np.frombuffer(raw, dtype=np.float32).reshape(h, w).copy()
+                if np.isfinite(arr).any():
+                    return arr
+    # (1~3) PNG-encoded variants.
+    arr_u8 = np.frombuffer(raw, dtype=np.uint8)
+    img = cv2.imdecode(arr_u8, cv2.IMREAD_UNCHANGED)
     if img is None:
         return None
     if img.ndim == 3 and img.shape[2] == 4 and img.dtype == np.uint8:

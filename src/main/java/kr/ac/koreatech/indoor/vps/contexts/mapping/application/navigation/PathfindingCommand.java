@@ -3,7 +3,6 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation;
 import java.util.UUID;
 
 public record PathfindingCommand(
-        UUID startScanId,
         UUID startAreaId,
         Integer startFloorLevel,
         double startX,
@@ -12,8 +11,8 @@ public record PathfindingCommand(
         UUID destinationId,
         String destinationName
 ) {
-    public PathfindingCommand(UUID startScanId, Integer startFloorLevel,
+    public PathfindingCommand(Integer startFloorLevel,
             double startX, double startY, double startZ, String destinationName) {
-        this(startScanId, null, startFloorLevel, startX, startY, startZ, null, destinationName);
+        this(null, startFloorLevel, startX, startY, startZ, null, destinationName);
     }
 }
