@@ -5,6 +5,7 @@ import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.SlamLocalizationService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand.ImagePayload;
@@ -34,7 +35,7 @@ public class SlamController {
     @PostMapping("/v3/localize")
     public SLAMLocalizeResponse localizeUploadedImages(
             @RequestParam("images") List<MultipartFile> images,
-            @RequestParam(name = "depths", required = false) List<MultipartFile> depths,
+            @RequestParam(name = "depths", required = false) Optional<List<MultipartFile>> depths,
             @RequestParam(name = "building_id", required = false) String buildingId,
             @RequestParam(name = "map_id", required = false) String mapId,
             @RequestParam(name = "floor_id", required = false) String floorId
@@ -42,7 +43,9 @@ public class SlamController {
         CaptureRecord capture = fixtureCapture.captureLocalizeImages(images, buildingId, mapId);
         try {
             LocalizeCommand command = new LocalizeCommand(
-                    toImagePayloads(images), toDepthPayloads(depths), buildingId, mapId, floorId);
+                    toImagePayloads(images),
+                    toDepthPayloads(depths.orElse(null)),
+                    buildingId, mapId, floorId);
             SLAMLocalizeResult result = localizationService.localize(command);
             SLAMLocalizeResponse response = toResponse(result);
             fixtureCapture.writeResponse(capture, response);
