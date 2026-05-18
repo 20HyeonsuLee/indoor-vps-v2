@@ -62,4 +62,9 @@ public class GraphQueryFacade {
         return buildJobRepository.findFirstByScan_ScanIdOrderByEnqueuedAtDesc(scanId)
                 .map(BuildJobEntity::getBuildJobId);
     }
+
+    public Optional<UUID> findNodeArea(UUID nodeId) {
+        return mapNodeRepository.findById(nodeId)
+                .map(MapNodeEntity::getAreaId);
+    }
 }

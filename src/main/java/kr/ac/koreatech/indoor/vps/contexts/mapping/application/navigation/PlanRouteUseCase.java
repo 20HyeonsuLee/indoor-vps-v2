@@ -7,12 +7,14 @@ import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.PathStep;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.RoutePosition;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PoiRouteTargetResolver.PoiRouteTarget;
+import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.NavigationGraphService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.Point3;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteEdge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteNode;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteResult;
+import org.springframework.http.HttpStatus;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -113,10 +115,27 @@ public class PlanRouteUseCase {
 
     public FloorRouteResult floorRoute(FloorRouteCommand command) {
         queryContext.requireFloor(command.floorId());
-        Optional<FloorScanEntity> active = queryContext.activeScan(command.floorId());
+
+        UUID fromAreaId = graphQueryFacade.findNodeArea(command.fromNode())
+                .orElseThrow(() -> new ClientApiException(
+                        HttpStatus.NOT_FOUND, "ROUTE_NODE_NOT_FOUND", "from node not found: " + command.fromNode()));
+
+        UUID toAreaId = graphQueryFacade.findNodeArea(command.toNode())
+                .orElseThrow(() -> new ClientApiException(
+                        HttpStatus.NOT_FOUND, "ROUTE_NODE_NOT_FOUND", "to node not found: " + command.toNode()));
+
+        if (!fromAreaId.equals(toAreaId)) {
+            throw new ClientApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "CROSS_AREA_ROUTE_UNSUPPORTED",
+                    "from/to nodes must be in same area (cross-area routing not yet supported)");
+        }
+
+        Optional<FloorScanEntity> active = queryContext.activeScanForArea(command.floorId(), Optional.of(fromAreaId));
         if (active.isEmpty()) {
             return new FloorRouteResult(command.floorId(), null, command.fromNode(), command.toNode(), 0.0, List.of(), List.of());
         }
+
         UUID scanId = active.get().getScan().getScanId();
         List<RouteNode> routeNodes = graphQueryFacade.routeNodes(scanId);
         RouteResult route = graphService.routeBetween(
