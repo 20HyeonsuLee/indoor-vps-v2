@@ -276,12 +276,90 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
             str(exc),
             {"sourceCount": len(sources)},
         ) from exc
+
+    metadata_diag = _merge_metadata_alongside(
+        source_paths=[Path(p) for p in payload["sourcePaths"]],
+        merged_rtabmap_db=output_db,
+        output_dir=output_dir,
+    )
+
+    diagnostics = result.to_metadata()
+    diagnostics["scan_metadata_merge"] = metadata_diag
     return {
         "mergedDbPath": str(output_db),
         "sha256": sha256_file(output_db),
         "fileSize": output_db.stat().st_size,
-        "diagnostics": result.to_metadata(),
+        "diagnostics": diagnostics,
     }
+
+
+def _merge_metadata_alongside(
+    *,
+    source_paths: list[Path],
+    merged_rtabmap_db: Path,
+    output_dir: Path,
+) -> dict[str, object]:
+    """Merge sidecar scan_metadata.db files into output_dir/scan_metadata.db.
+
+    Each source rtabmap.db path's sibling scan_metadata.db is consumed.
+    Sources without a sidecar are skipped; if none have one, no output is
+    written and merge_status=='no_sources_with_metadata'.
+    """
+    merge_func, source_class = load_metadata_merge_dependencies()
+    merge_sources = []
+    skipped = []
+    for src_rtabmap in source_paths:
+        sidecar = src_rtabmap.parent / "scan_metadata.db"
+        if not sidecar.exists():
+            skipped.append(src_rtabmap.parent.name)
+            continue
+        merge_sources.append(source_class(
+            scan_id=src_rtabmap.parent.name,
+            metadata_db_path=sidecar,
+            rtabmap_db_path=src_rtabmap,
+        ))
+    if not merge_sources:
+        return {
+            "merge_status": "no_sources_with_metadata",
+            "skipped_sources": skipped,
+        }
+    output_db = output_dir / "scan_metadata.db"
+    try:
+        result = merge_func(
+            sources=merge_sources,
+            merged_rtabmap_db=merged_rtabmap_db,
+            output_db=output_db,
+        )
+    except Exception as exc:
+        return {
+            "merge_status": "failed",
+            "error": str(exc),
+            "type": type(exc).__name__,
+        }
+    return {
+        "merge_status": "ok",
+        "output_db_path": str(result.output_db_path),
+        "per_source_row_counts": result.per_source_row_counts,
+        "total_rows_written": result.total_rows_written,
+        "skipped_sources_without_metadata": skipped,
+    }
+
+
+def load_metadata_merge_dependencies():
+    backend_path = resolve_legacy_backend_src("merge_scan_metadata")
+    prepend_sys_path(backend_path)
+    try:
+        from indoor_server.application.building.multiscan_metadata_merge import (  # type: ignore
+            MetadataMergeSource,
+            merge_scan_metadata,
+        )
+    except Exception as exc:
+        raise BridgeRuntimeError(
+            "BRIDGE_BACKEND_IMPORT_FAILED",
+            str(exc),
+            {"type": type(exc).__name__, "module": "multiscan_metadata_merge"},
+        ) from exc
+    return merge_scan_metadata, MetadataMergeSource
 
 
 def validate_build_superpoint_index(payload: dict[str, object]) -> None:

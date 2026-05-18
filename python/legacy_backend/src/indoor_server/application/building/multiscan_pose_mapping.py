@@ -186,31 +186,62 @@ def parse_provenance_label(label: str | None) -> SourceNodeRef | None:
     )
 
 
+USER_DATA_PROVENANCE_PREFIX = "__ipf_src_v1__\x00"
+
+
 def load_rtabmap_node_records(db_path: Path) -> list[RtabmapNodeRecord]:
+    """Load Node + Data rows. Falls back to Data.user_data for the provenance
+    label when Node.label is missing/overwritten (rtabmap-reprocess `-a` clears
+    Node.label for the appended DB; user_data BLOB survives).
+    """
     uri = f"file:{db_path}?mode=ro&immutable=1"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            "SELECT id, map_id, stamp, pose, label FROM Node ORDER BY id"
+            "SELECT n.id AS id, n.map_id AS map_id, n.stamp AS stamp, "
+            "       n.pose AS pose, n.label AS label, d.user_data AS user_data "
+            "FROM Node n LEFT JOIN Data d ON d.id = n.id ORDER BY n.id"
         ).fetchall()
         records: list[RtabmapNodeRecord] = []
         for row in rows:
             pose = row["pose"]
             if pose is None:
                 continue
+            label = row["label"]
+            if not _is_provenance(label):
+                recovered = _provenance_from_user_data(row["user_data"])
+                if recovered is not None:
+                    label = recovered
             records.append(
                 RtabmapNodeRecord(
                     node_id=int(row["id"]),
                     map_id=int(row["map_id"]),
                     stamp=float(row["stamp"] or 0.0),
                     pose=decode_pose_3x4_blob(pose),
-                    label=row["label"],
+                    label=label,
                 )
             )
         return records
     finally:
         conn.close()
+
+
+def _is_provenance(label: str | None) -> bool:
+    return bool(label) and label.startswith(PROVENANCE_LABEL_PREFIX)
+
+
+def _provenance_from_user_data(blob) -> str | None:
+    if blob is None:
+        return None
+    try:
+        text = bytes(blob).decode("utf-8")
+    except (UnicodeDecodeError, TypeError):
+        return None
+    if not text.startswith(USER_DATA_PROVENANCE_PREFIX):
+        return None
+    payload = text[len(USER_DATA_PROVENANCE_PREFIX):]
+    return payload if payload.startswith(PROVENANCE_LABEL_PREFIX) else None
 
 
 def build_node_pose_mapping(

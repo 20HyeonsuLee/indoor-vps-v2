@@ -37,16 +37,31 @@ class PreparedRtabmapScan:
 
 @dataclass(frozen=True)
 class MultiScanReprocessParams:
+    # Multi-DB merge가 cross-session loop closure에 의존해 sub-map 좌표계를
+    # 정렬하므로, 기본값은 loop closure를 적극적으로 탐색하는 방향으로 잡음.
     append_mode: bool = True
     skip: int = 0
-    feature_strategy: int = 1
-    rehearsal_similarity: float = 1.0
+    feature_strategy: int = 1                     # SURF
+    rehearsal_similarity: float = 0.6             # 기본값으로 복원 (1.0 → 0.6)
     not_linked_nodes_kept: bool = True
     reduce_graph: bool = False
     memory_thr: int = 0
     time_thr: int = 0
-    optimize_max_error: float = 3.0
+    optimize_max_error: float = 6.0               # sub-map 간 큰 정렬 transform 허용 (3 → 6)
     warn: bool = True
+
+    # multi-session loop closure 핵심: 두 번째 DB 로드 시 첫 DB의 모든 노드를
+    # working memory에 두어야 cross-session 매칭이 가능.
+    init_wm_with_all_nodes: bool = True
+    # loop closure 탐색을 적극적으로 (낮을수록 적극)
+    loop_thr: float = 0.05                        # 0.11 → 0.05
+    vis_min_inliers: int = 12                     # 20 → 12
+    detection_rate: float = 0.0                   # 1Hz → 모든 노드에서 시도
+    stm_size: int = 30                            # 10 → 30
+    proximity_max_graph_depth: int = 0            # 50 → 0 (cross-session proximity 풀기)
+    proximity_by_space: bool = True
+    optimizer_iterations: int = 200               # 100 → 200
+
     extra_args: tuple[str, ...] = ()
 
     def to_args(self) -> list[str]:
@@ -62,9 +77,17 @@ class MultiScanReprocessParams:
                 f"--Mem/RehearsalSimilarity={self.rehearsal_similarity}",
                 f"--Mem/NotLinkedNodesKept={str(self.not_linked_nodes_kept).lower()}",
                 f"--Mem/ReduceGraph={str(self.reduce_graph).lower()}",
+                f"--Mem/InitWMWithAllNodes={str(self.init_wm_with_all_nodes).lower()}",
+                f"--Mem/STMSize={self.stm_size}",
                 f"--Rtabmap/MemoryThr={self.memory_thr}",
                 f"--Rtabmap/TimeThr={self.time_thr}",
+                f"--Rtabmap/LoopThr={self.loop_thr}",
+                f"--Rtabmap/DetectionRate={self.detection_rate}",
+                f"--Vis/MinInliers={self.vis_min_inliers}",
                 f"--RGBD/OptimizeMaxError={self.optimize_max_error}",
+                f"--RGBD/ProximityBySpace={str(self.proximity_by_space).lower()}",
+                f"--RGBD/ProximityMaxGraphDepth={self.proximity_max_graph_depth}",
+                f"--Optimizer/Iterations={self.optimizer_iterations}",
             ]
         )
         if self.warn:
@@ -241,6 +264,11 @@ def prepare_rtabmap_sources(
 
 
 def inject_provenance_labels(db_path: Path, *, scan_id: str) -> int:
+    """Stamp every Node with provenance — both into Node.label (primary) and
+    Data.user_data (fallback). rtabmap-reprocess `-a` overwrites Node.label for
+    the appended DB (map_id=1+), but preserves Data.user_data BLOBs, so the
+    fallback lets us recover provenance for *every* merged node.
+    """
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
@@ -254,14 +282,25 @@ def inject_provenance_labels(db_path: Path, *, scan_id: str) -> int:
                 stamp=float(row["stamp"] or 0.0),
                 original_label=row["label"],
             )
+            provenance = build_provenance_label(source)
             conn.execute(
                 "UPDATE Node SET label = ? WHERE id = ?",
-                (build_provenance_label(source), int(row["id"])),
+                (provenance, int(row["id"])),
+            )
+            # user_data BLOB: prefix with magic header so we can extract later
+            # without colliding with caller-supplied user_data payloads.
+            user_blob = (USER_DATA_PROVENANCE_PREFIX + provenance).encode("utf-8")
+            conn.execute(
+                "UPDATE Data SET user_data = ? WHERE id = ?",
+                (user_blob, int(row["id"])),
             )
         conn.commit()
         return len(rows)
     finally:
         conn.close()
+
+
+USER_DATA_PROVENANCE_PREFIX = "__ipf_src_v1__\x00"
 
 
 def count_nodes(db_path: Path) -> int:
