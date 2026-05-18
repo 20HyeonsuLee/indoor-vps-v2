@@ -35,11 +35,12 @@ public class SlamController {
     public SLAMLocalizeResponse localizeUploadedImages(
             @RequestParam("images") List<MultipartFile> images,
             @RequestParam(name = "building_id", required = false) String buildingId,
-            @RequestParam(name = "map_id", required = false) String mapId
+            @RequestParam(name = "map_id", required = false) String mapId,
+            @RequestParam(name = "floor_id", required = false) String floorId
     ) {
         CaptureRecord capture = fixtureCapture.captureLocalizeImages(images, buildingId, mapId);
         try {
-            LocalizeCommand command = new LocalizeCommand(toImagePayloads(images), buildingId, mapId);
+            LocalizeCommand command = new LocalizeCommand(toImagePayloads(images), buildingId, mapId, floorId);
             SLAMLocalizeResult result = localizationService.localize(command);
             SLAMLocalizeResponse response = toResponse(result);
             fixtureCapture.writeResponse(capture, response);

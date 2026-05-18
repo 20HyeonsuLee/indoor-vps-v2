@@ -49,6 +49,15 @@ public class SlamLocalizationService {
         if (floorMaps.isEmpty()) {
             throw new ClientApiException(HttpStatus.NOT_FOUND, "MAP_NOT_FOUND", "No maps found for building " + resolvedBuildingId);
         }
+        if (command.floorId() != null && !command.floorId().isBlank()) {
+            floorMaps = floorMaps.stream()
+                    .filter(ref -> command.floorId().equalsIgnoreCase(ref.floorId()))
+                    .toList();
+            if (floorMaps.isEmpty()) {
+                throw new ClientApiException(HttpStatus.NOT_FOUND, "FLOOR_MAP_NOT_FOUND",
+                        "No active map for floor " + command.floorId());
+            }
+        }
 
         List<Path> tempFiles = new ArrayList<>();
         Path tempDir = null;
