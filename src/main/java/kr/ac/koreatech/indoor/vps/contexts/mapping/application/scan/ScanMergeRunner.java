@@ -31,24 +31,38 @@ public class ScanMergeRunner {
                 cmd.floorId(),
                 cmd.mergedScanId(),
                 cmd.sources().stream()
-                        .map(source -> rtabmapDbPath(source.getScan().getStoragePath()).toString())
+                        .map(source -> sourceDbForMerge(source.getScan().getStoragePath()).toString())
                         .toList(),
                 outputDir.toString()
         ));
     }
 
-    private Path rtabmapDbPath(String storagePath) {
+    /**
+     * Source가 reprocess된 결과(rtabmap_reprocessed.db)가 있으면 그것을 머지 입력으로 사용.
+     * 단일 스캔 reprocess는 풍부한 loop closure를 추가 검출(예: 409 노드 스캔에서 167건)
+     * 하므로 머지 시작점이 훨씬 깨끗함. 없으면 raw rtabmap.db로 fallback.
+     */
+    private Path sourceDbForMerge(String storagePath) {
+        Path dir = resolveSourceDir(storagePath);
+        Path reprocessed = dir.resolve("rtabmap_reprocessed.db");
+        if (java.nio.file.Files.exists(reprocessed)) {
+            return reprocessed;
+        }
+        return dir.resolve("rtabmap.db");
+    }
+
+    private Path resolveSourceDir(String storagePath) {
         Path path = Path.of(storagePath);
         if (!path.isAbsolute()) {
             path = properties.getStorageRoot().resolve(path);
         }
         Path fileName = path.getFileName();
         if (fileName != null && "rtabmap.db".equals(fileName.toString())) {
-            return path;
+            return path.getParent();
         }
         if (fileName != null && fileName.toString().endsWith(".zip") && path.getParent() != null) {
-            return path.getParent().resolve("rtabmap.db");
+            return path.getParent();
         }
-        return path.resolve("rtabmap.db");
+        return path;
     }
 }

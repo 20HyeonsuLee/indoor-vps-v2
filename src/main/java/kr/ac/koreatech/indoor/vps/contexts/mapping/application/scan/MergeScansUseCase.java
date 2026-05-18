@@ -1,16 +1,13 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.area.FloorAreaResolver;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorScanEntity;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.ScanIngestEntity;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,18 +21,18 @@ public class MergeScansUseCase {
     private final FloorQueryService floorService;
     private final FloorAreaResolver floorAreaResolver;
     private final ScanPersistence scanPersistence;
-    private final ScanMergeRunner mergeRunner;
+    private final AsyncMergeExecutor asyncMergeExecutor;
 
     public MergeScansUseCase(
             FloorQueryService floorService,
             FloorAreaResolver floorAreaResolver,
             ScanPersistence scanPersistence,
-            ScanMergeRunner mergeRunner
+            AsyncMergeExecutor asyncMergeExecutor
     ) {
         this.floorService = floorService;
         this.floorAreaResolver = floorAreaResolver;
         this.scanPersistence = scanPersistence;
-        this.mergeRunner = mergeRunner;
+        this.asyncMergeExecutor = asyncMergeExecutor;
     }
 
     @Transactional
@@ -62,28 +59,17 @@ public class MergeScansUseCase {
             return activateSingleMerge(floorId, area, sources.getFirst());
         }
 
+        // 다중 청크 머지는 Python bridge 호출이 길어(rtabmap-reprocess + 후처리
+        // 합쳐 분 단위) 동기로 두면 클라이언트가 60초 안에 응답을 못 받음.
+        // 백그라운드 실행으로 분리하고 즉시 MERGING으로 응답한다. 클라는
+        // chunks API를 polling해 머지본 등장을 확인한다.
         UUID mergedScanId = UUID.randomUUID();
-        MergeScanBridgeResponse merge = mergeRunner.run(new ScanMergeRunCommand(floorId, mergedScanId, sources));
-
-        ScanIngestEntity scan = scanPersistence.saveScan(new ScanIngestEntity(
-                mergedScanId,
-                merge.sha256(),
-                "scans/" + mergedScanId,
-                Map.of("merge", merge.diagnostics() == null ? Map.of() : merge.diagnostics()),
+        asyncMergeExecutor.executeMerge(
+                new ScanMergeRunCommand(floorId, mergedScanId, sources),
+                floorId,
                 area.getAreaId()
-        ));
-        scanPersistence.deactivateForArea(area.getAreaId());
-        FloorScanEntity floorScan = new FloorScanEntity(
-                area,
-                scan,
-                "merged_" + mergedScanId + ".db",
-                merge.fileSize(),
-                scanPersistence.nextUploadOrder(floorId)
         );
-        floorScan.changeStatus("MERGED");
-        floorScan.changeActive(true);
-        scanPersistence.saveScanEntity(floorScan);
-        return new MergedScanResult(floorId, mergedScanId, "MERGED");
+        return new MergedScanResult(floorId, mergedScanId, "MERGING");
     }
 
     public MergedScanResult mergeStatus(UUID floorId, Optional<UUID> areaId) {

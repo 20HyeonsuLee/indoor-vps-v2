@@ -92,6 +92,12 @@ public class PythonBridgeAdapter implements PythonBridge {
         if (BridgeCommand.BUILD_SUPERPOINT_INDEX.wireName().equals(command)) {
             return properties.getPython().getBuildSuperpointIndexTimeoutSeconds();
         }
+        if (BridgeCommand.MERGE_SCAN.wireName().equals(command)) {
+            // multi-scan merge = rtabmap-reprocess -a (~30~90s) + post-merge reprocess (~30~60s)
+            //                  + Stage 3 alignment (~1s) + scan_metadata merge (~5s).
+            // 60s 기본값으론 부족, 15분 한도로 풀어놓음.
+            return properties.getPython().getMergeScanTimeoutSeconds();
+        }
         return properties.getPython().getTimeoutSeconds();
     }
 

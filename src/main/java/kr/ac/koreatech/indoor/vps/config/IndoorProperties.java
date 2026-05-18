@@ -34,6 +34,7 @@ public class IndoorProperties {
         private String device = "cpu";
         private long timeoutSeconds = 60;
         private long buildSuperpointIndexTimeoutSeconds = 600;
+        private long mergeScanTimeoutSeconds = 900;
         private Daemon daemon = new Daemon();
 
         public boolean isEnabled() { return enabled; }
@@ -57,6 +58,11 @@ public class IndoorProperties {
         public long getBuildSuperpointIndexTimeoutSeconds() { return buildSuperpointIndexTimeoutSeconds; }
         public void setBuildSuperpointIndexTimeoutSeconds(long buildSuperpointIndexTimeoutSeconds) {
             this.buildSuperpointIndexTimeoutSeconds = buildSuperpointIndexTimeoutSeconds;
+        }
+
+        public long getMergeScanTimeoutSeconds() { return mergeScanTimeoutSeconds; }
+        public void setMergeScanTimeoutSeconds(long mergeScanTimeoutSeconds) {
+            this.mergeScanTimeoutSeconds = mergeScanTimeoutSeconds;
         }
 
         public Daemon getDaemon() { return daemon; }

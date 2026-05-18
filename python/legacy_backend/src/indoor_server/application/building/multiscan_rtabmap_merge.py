@@ -47,7 +47,11 @@ class MultiScanReprocessParams:
     reduce_graph: bool = False
     memory_thr: int = 0
     time_thr: int = 0
-    optimize_max_error: float = 6.0               # sub-map 간 큰 정렬 transform 허용 (3 → 6)
+    # 두 ARKit world의 origin 차이가 클 때(예: 30~40m) graph optimizer가
+    # cross-session loop closure를 outlier로 reject해 정렬이 망가짐. 50m로
+    # 완화해야 두 sub-map 간 큰 transform이 허용되어 정렬 성공.
+    # (이전 프로덕션 시스템에서 검증된 값.)
+    optimize_max_error: float = 50.0
     warn: bool = True
 
     # multi-session loop closure 핵심: 두 번째 DB 로드 시 첫 DB의 모든 노드를
@@ -61,6 +65,21 @@ class MultiScanReprocessParams:
     proximity_max_graph_depth: int = 0            # 50 → 0 (cross-session proximity 풀기)
     proximity_by_space: bool = True
     optimizer_iterations: int = 200               # 100 → 200
+
+    # 정렬 결정타: -a + IncrementalMemory=false → 두 번째 DB가 첫 DB에
+    # localization-only로 처리되어 sub-map B가 sub-map A 좌표계로 강제 정렬.
+    # 이 조합 없이는 두 sub-map 모두 자기 origin (0,0,0)에서 시작해 따로 살아남음.
+    incremental_memory: bool = False
+    # Vertigo robust optimization (g2o/GTSAM 필요). cross-map closure가 풍부할 때
+    # robust kernel이 boundary constraint를 outlier로 down-weight해버려 sub-map 정렬
+    # 자체가 안 되는 케이스 확인됨 → 기본 비활성. 노이즈가 많은 환경에서만 켜기.
+    optimizer_robust: bool = False
+    # GTSAM (2) 또는 g2o (1). multi-session에 GTSAM이 더 잘 작동한다는 보고.
+    optimizer_strategy: int = 2
+    # ARKit pose는 gravity-aligned이므로 중력 제약을 active. multi-session 정렬에
+    # 강한 사전 정보 제공.
+    use_odom_gravity: bool = True
+    gravity_sigma: float = 0.3
 
     extra_args: tuple[str, ...] = ()
 
@@ -88,6 +107,11 @@ class MultiScanReprocessParams:
                 f"--RGBD/ProximityBySpace={str(self.proximity_by_space).lower()}",
                 f"--RGBD/ProximityMaxGraphDepth={self.proximity_max_graph_depth}",
                 f"--Optimizer/Iterations={self.optimizer_iterations}",
+                f"--Optimizer/Strategy={self.optimizer_strategy}",
+                f"--Mem/IncrementalMemory={str(self.incremental_memory).lower()}",
+                f"--Optimizer/Robust={str(self.optimizer_robust).lower()}",
+                f"--Mem/UseOdomGravity={str(self.use_odom_gravity).lower()}",
+                f"--Optimizer/GravitySigma={self.gravity_sigma}",
             ]
         )
         if self.warn:
