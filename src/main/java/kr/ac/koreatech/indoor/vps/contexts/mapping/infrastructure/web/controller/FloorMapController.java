@@ -3,8 +3,6 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controlle
 import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.MapDtos.*;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.GetFloorMapUseCase;
@@ -25,13 +23,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class FloorMapController {
     private final GetFloorMapUseCase getFloorMapUseCase;
     private final FloorMapResponseMapper floorMapMapper;
+    private final GeoJsonConverter geoJsonConverter;
 
     public FloorMapController(
             GetFloorMapUseCase getFloorMapUseCase,
-            FloorMapResponseMapper floorMapMapper
+            FloorMapResponseMapper floorMapMapper,
+            GeoJsonConverter geoJsonConverter
     ) {
         this.getFloorMapUseCase = getFloorMapUseCase;
         this.floorMapMapper = floorMapMapper;
+        this.geoJsonConverter = geoJsonConverter;
     }
 
     @GetMapping("/floors/{floorId}/map")
@@ -56,7 +57,7 @@ public class FloorMapController {
                 result.buildJobId(),
                 FloorMapCoordinateSystem.worldMeters(),
                 floorMapMapper.floorMapBounds(result.nodes()),
-                Map.of("type", "FeatureCollection", "features", List.of()),
+                geoJsonConverter.toFeatureCollection(result.polygons()),
                 result.nodes().stream().map(floorMapMapper::floorMapNode).toList(),
                 result.edges().stream().map(floorMapMapper::floorMapEdge).toList(),
                 result.etag()
