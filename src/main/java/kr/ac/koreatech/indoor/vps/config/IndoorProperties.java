@@ -33,6 +33,8 @@ public class IndoorProperties {
         private String backendSource = "./python/legacy_backend/src";
         private String device = "cpu";
         private long timeoutSeconds = 60;
+        private long buildSuperpointIndexTimeoutSeconds = 600;
+        private Daemon daemon = new Daemon();
 
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -51,6 +53,21 @@ public class IndoorProperties {
 
         public long getTimeoutSeconds() { return timeoutSeconds; }
         public void setTimeoutSeconds(long timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }
+
+        public long getBuildSuperpointIndexTimeoutSeconds() { return buildSuperpointIndexTimeoutSeconds; }
+        public void setBuildSuperpointIndexTimeoutSeconds(long buildSuperpointIndexTimeoutSeconds) {
+            this.buildSuperpointIndexTimeoutSeconds = buildSuperpointIndexTimeoutSeconds;
+        }
+
+        public Daemon getDaemon() { return daemon; }
+        public void setDaemon(Daemon daemon) { this.daemon = daemon; }
+
+        public static class Daemon {
+            private boolean enabled = true;
+
+            public boolean isEnabled() { return enabled; }
+            public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        }
     }
 
     public static class Rtabmap {

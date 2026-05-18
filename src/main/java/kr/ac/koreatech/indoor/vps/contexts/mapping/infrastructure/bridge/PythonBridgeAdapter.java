@@ -27,10 +27,16 @@ import org.springframework.stereotype.Component;
 public class PythonBridgeAdapter implements PythonBridge {
     private final IndoorProperties properties;
     private final ObjectMapper objectMapper;
+    private final PythonBridgeDaemon daemon;
 
-    public PythonBridgeAdapter(IndoorProperties properties, ObjectMapper objectMapper) {
+    public PythonBridgeAdapter(
+            IndoorProperties properties,
+            ObjectMapper objectMapper,
+            PythonBridgeDaemon daemon
+    ) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.daemon = daemon;
     }
 
     @Override
@@ -65,7 +71,28 @@ public class PythonBridgeAdapter implements PythonBridge {
     }
 
     private <T> T call(BridgeCommand command, Object payload, Class<T> responseType) {
+        ensureEnabled();
+        if (properties.getPython().getDaemon().isEnabled()) {
+            return callDaemon(command, payload, responseType);
+        }
         return call(command.wireName(), payload, responseType);
+    }
+
+    private <T> T callDaemon(BridgeCommand command, Object payload, Class<T> responseType) {
+        Duration timeout = Duration.ofSeconds(timeoutSecondsFor(command.wireName()));
+        JsonNode data = daemon.call(command.wireName(), payload, timeout);
+        try {
+            return objectMapper.treeToValue(data, responseType);
+        } catch (IOException e) {
+            throw bridgeError(command.wireName(), "PYTHON_BRIDGE_FAILED", e.getMessage(), null);
+        }
+    }
+
+    private long timeoutSecondsFor(String command) {
+        if (BridgeCommand.BUILD_SUPERPOINT_INDEX.wireName().equals(command)) {
+            return properties.getPython().getBuildSuperpointIndexTimeoutSeconds();
+        }
+        return properties.getPython().getTimeoutSeconds();
     }
 
     private <T> T call(String command, Object payload, Class<T> responseType) {
@@ -85,8 +112,7 @@ public class PythonBridgeAdapter implements PythonBridge {
             process.getOutputStream().close();
 
             boolean finished = process.waitFor(
-                    Duration.ofSeconds(properties.getPython().getTimeoutSeconds())
-                            .toMillis(),
+                    Duration.ofSeconds(timeoutSecondsFor(command)).toMillis(),
                     java.util.concurrent.TimeUnit.MILLISECONDS
             );
             if (!finished) {

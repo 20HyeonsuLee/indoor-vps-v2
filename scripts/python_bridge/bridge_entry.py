@@ -37,9 +37,13 @@ class BridgeRuntimeError(RuntimeError):
 
 def main() -> int:
     command = sys.argv[1] if len(sys.argv) > 1 else ""
+    if command == "daemon":
+        return daemon_loop()
     try:
         payload = json.load(sys.stdin)
-        return dispatch(command, payload)
+        result = dispatch(command, payload)
+        print_json(result)
+        return 0
     except BridgeContractError as exc:
         return fail("BRIDGE_VALIDATION_ERROR", str(exc), exc.detail)
     except BridgeRuntimeError as exc:
@@ -48,34 +52,96 @@ def main() -> int:
         return fail("BRIDGE_INVALID_JSON", "stdin must be JSON", {"reason": str(exc)})
 
 
-def dispatch(command: str, payload: dict[str, object]) -> int:
+def dispatch(command: str, payload: dict[str, object]) -> dict[str, object]:
     if command == "health":
-        print(json.dumps({
-            "ok": True,
-            "commands": list(COMMANDS),
-            "mlDevice": requested_ml_device(),
-            "cudaVisibleDevices": os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>"),
-        }))
-        return 0
+        return health_response()
     if command == "localize":
         validate_localize(payload)
         if payload.get("contractOnly") is True:
-            print_json({"ok": True, "command": command})
-            return 0
+            return {"ok": True, "command": command}
         return localize(payload)
     if command == "merge_scan":
         validate_merge_scan(payload)
         if payload.get("contractOnly") is True:
-            print_json({"ok": True, "command": command})
-            return 0
+            return {"ok": True, "command": command}
         return merge_scan(payload)
     if command == "build_superpoint_index":
         validate_build_superpoint_index(payload)
         if payload.get("contractOnly") is True:
-            print_json({"ok": True, "command": command})
-            return 0
+            return {"ok": True, "command": command}
         return build_superpoint_index(payload)
-    return fail("BRIDGE_UNKNOWN_COMMAND", f"unknown bridge command: {command}", {"commands": list(COMMANDS)})
+    raise BridgeRuntimeError(
+        "BRIDGE_UNKNOWN_COMMAND",
+        f"unknown bridge command: {command}",
+        {"commands": list(COMMANDS)},
+    )
+
+
+def health_response() -> dict[str, object]:
+    return {
+        "ok": True,
+        "commands": list(COMMANDS),
+        "mlDevice": requested_ml_device(),
+        "cudaVisibleDevices": os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>"),
+    }
+
+
+def daemon_loop() -> int:
+    write_line({"event": "ready", "commands": list(COMMANDS)})
+    for raw_line in sys.stdin:
+        line = raw_line.strip()
+        if not line:
+            continue
+        write_line(handle_daemon_line(line))
+    return 0
+
+
+def handle_daemon_line(line: str) -> dict[str, object]:
+    req_id: object = None
+    try:
+        msg = json.loads(line)
+        req_id = msg.get("id")
+        command = str(msg.get("command", ""))
+        payload = msg.get("payload") or {}
+        if not isinstance(payload, dict):
+            raise BridgeContractError(
+                "payload must be a JSON object",
+                {"got": type(payload).__name__},
+            )
+        result = dispatch(command, payload)
+        return {"id": req_id, "ok": True, "data": result}
+    except BridgeContractError as exc:
+        return daemon_error(req_id, "BRIDGE_VALIDATION_ERROR", str(exc), exc.detail)
+    except BridgeRuntimeError as exc:
+        return daemon_error(req_id, exc.code, str(exc), exc.detail)
+    except json.JSONDecodeError as exc:
+        return daemon_error(req_id, "BRIDGE_INVALID_JSON", str(exc), {})
+    except Exception as exc:
+        return daemon_error(
+            req_id,
+            "BRIDGE_INTERNAL_ERROR",
+            str(exc),
+            {"type": type(exc).__name__},
+        )
+
+
+def daemon_error(
+    req_id: object,
+    code: str,
+    message: str,
+    detail: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "id": req_id,
+        "ok": False,
+        "error": {"code": code, "message": message, "detail": detail},
+    }
+
+
+def write_line(payload: dict[str, object]) -> None:
+    sys.stdout.write(json.dumps(payload, default=json_default))
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
 
 def validate_localize(payload: dict[str, object]) -> None:
@@ -124,10 +190,8 @@ def require_floor_maps(payload: dict[str, object]) -> list[dict[str, object]]:
     return value
 
 
-def localize(payload: dict[str, object]) -> int:
-    result = asyncio.run(localize_async(payload))
-    print_json(result)
-    return 0
+def localize(payload: dict[str, object]) -> dict[str, object]:
+    return asyncio.run(localize_async(payload))
 
 
 async def localize_async(payload: dict[str, object]) -> dict[str, object]:
@@ -236,10 +300,8 @@ def extract_first_intrinsics(slam_engine, floor_maps: list[dict[str, object]]) -
     )
 
 
-def merge_scan(payload: dict[str, object]) -> int:
-    result = asyncio.run(merge_scan_async(payload))
-    print_json(result)
-    return 0
+def merge_scan(payload: dict[str, object]) -> dict[str, object]:
+    return asyncio.run(merge_scan_async(payload))
 
 
 async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
@@ -277,13 +339,33 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
             {"sourceCount": len(sources)},
         ) from exc
 
+    # 머지(rtabmap-reprocess -a) 출력은 sub-map 경계 너머 loop closure를
+    # 결과 DB에 저장하지 않는 quirk가 있음. 따라서 단일 DB로 다시 reprocess해
+    # cross-map closure를 확보. 다만 graph optimization은 여전히 각 sub-map의
+    # 첫 노드를 anchor로 고정하므로 sub-map B의 좌표는 옮기지 않음.
+    reprocessed_db = output_dir / "rtabmap_reprocessed.db"
+    reprocess_diag = await _post_merge_reprocess(
+        binary_path=runner.binary_path,
+        input_db=output_db,
+        output_db=reprocessed_db,
+        timeout_s=float(payload.get("timeoutSeconds") or 900.0),
+    )
+
+    # Stage 3: cross-session link로부터 SE(3) yaw-only alignment 추정 후
+    # sub-map B 노드 pose를 직접 patch. rtabmap이 graph optimization으로
+    # 풀지 못하는 sub-map 정렬을 후처리로 강제한다.
+    pose_source_db = reprocessed_db if reprocessed_db.exists() else output_db
+    alignment_diag = _align_submaps(pose_source_db)
+
     metadata_diag = _merge_metadata_alongside(
         source_paths=[Path(p) for p in payload["sourcePaths"]],
-        merged_rtabmap_db=output_db,
+        merged_rtabmap_db=pose_source_db,
         output_dir=output_dir,
     )
 
     diagnostics = result.to_metadata()
+    diagnostics["post_merge_reprocess"] = reprocess_diag
+    diagnostics["submap_alignment"] = alignment_diag
     diagnostics["scan_metadata_merge"] = metadata_diag
     return {
         "mergedDbPath": str(output_db),
@@ -291,6 +373,114 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
         "fileSize": output_db.stat().st_size,
         "diagnostics": diagnostics,
     }
+
+
+async def _post_merge_reprocess(
+    *,
+    binary_path: str | None,
+    input_db: Path,
+    output_db: Path,
+    timeout_s: float,
+) -> dict[str, object]:
+    """단일 DB로 rtabmap-reprocess를 한 번 더 돌려 cross-map closure를 확보.
+
+    `rtabmap-reprocess -a` (append mode)가 sub-map 경계 너머의 loop closure를
+    결과 DB에 저장하지 않는 quirk를 우회한다. 단일 DB로 reprocess하면 경계가
+    사라져 visual matching이 정상 작동, 추가 cross-map closure가 발견되며
+    graph optimization으로 sub-map들이 통일 좌표계로 정렬된다.
+    """
+    if not binary_path:
+        return {"status": "skipped", "reason": "rtabmap-reprocess binary unavailable"}
+    if not input_db.exists():
+        return {"status": "skipped", "reason": f"input db missing: {input_db}"}
+    if output_db.exists():
+        output_db.unlink()
+
+    # `-a`/source 분리 없이 단일 DB 입력으로 호출. 머지 시 적용한 loop-closure
+    # 친화 옵션을 그대로 유지(통일 후 graph optimization을 다시 돌리는 게 목적).
+    # Robust + Gravity 옵션은 머지된 graph를 한 번 더 다듬는 데도 유효.
+    command = [
+        binary_path,
+        "--Kp/DetectorStrategy=1",
+        "--Vis/FeatureType=1",
+        "--Mem/RehearsalSimilarity=0.6",
+        "--Mem/NotLinkedNodesKept=true",
+        "--Mem/InitWMWithAllNodes=true",
+        "--Mem/STMSize=30",
+        "--Rtabmap/LoopThr=0.05",
+        "--Rtabmap/DetectionRate=0.0",
+        "--Vis/MinInliers=12",
+        "--RGBD/OptimizeMaxError=50.0",
+        "--RGBD/ProximityBySpace=true",
+        "--RGBD/ProximityMaxGraphDepth=0",
+        "--Optimizer/Iterations=200",
+        "--Optimizer/Strategy=2",
+        "--Optimizer/Robust=false",
+        "--Mem/UseOdomGravity=true",
+        "--Optimizer/GravitySigma=0.3",
+        "--uwarn",
+        str(input_db),
+        str(output_db),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return {"status": "timeout", "timeout_s": timeout_s}
+    stdout_text = stdout_b.decode(errors="replace") if stdout_b else ""
+    if proc.returncode != 0:
+        return {
+            "status": "failed",
+            "exit_code": proc.returncode,
+            "stderr_tail": (stderr_b.decode(errors="replace") if stderr_b else "")[-1500:],
+        }
+    # 마지막 줄에서 loop closure 통계 추출
+    closure_line = ""
+    for line in reversed(stdout_text.splitlines()):
+        if "Total loop closures" in line:
+            closure_line = line.strip()
+            break
+    return {
+        "status": "ok",
+        "output_db_path": str(output_db),
+        "loop_closure_summary": closure_line,
+    }
+
+
+def _align_submaps(merged_db: Path) -> dict[str, object]:
+    """Stage 3 RANSAC SE(3) yaw-only alignment of sub-map B onto sub-map A."""
+    try:
+        align_func = load_alignment_dependency()
+    except Exception as exc:
+        return {"status": "skipped", "reason": f"import failed: {exc}"}
+    try:
+        result = align_func(merged_db)
+    except Exception as exc:
+        return {"status": "failed", "error": str(exc), "type": type(exc).__name__}
+    return {
+        "status": result.status,
+        "cross_pair_count": result.cross_pair_count,
+        "inlier_count": result.inlier_count,
+        "rotation_deg": result.rotation_deg,
+        "translation_xy": list(result.translation_xy),
+        "patched_node_count": result.patched_node_count,
+        "reason": result.reason,
+    }
+
+
+def load_alignment_dependency():
+    backend_path = resolve_legacy_backend_src("align_submaps")
+    prepend_sys_path(backend_path)
+    from indoor_server.application.building.multiscan_alignment import (  # type: ignore
+        align_and_patch_merged,
+    )
+    return align_and_patch_merged
 
 
 def _merge_metadata_alongside(
@@ -367,7 +557,7 @@ def validate_build_superpoint_index(payload: dict[str, object]) -> None:
     require_string(payload, "dbPath")
 
 
-def build_superpoint_index(payload: dict[str, object]) -> int:
+def build_superpoint_index(payload: dict[str, object]) -> dict[str, object]:
     import time
     from pathlib import Path as _Path
 
@@ -383,7 +573,7 @@ def build_superpoint_index(payload: dict[str, object]) -> int:
     prepend_sys_path(backend_path)
 
     try:
-        import torch
+        import torch  # noqa: F401  (ensures torch is importable before backend modules)
         from indoor_server.application.slam.superpoint.device import (  # type: ignore
             resolve_torch_device,
         )
@@ -419,14 +609,13 @@ def build_superpoint_index(payload: dict[str, object]) -> int:
         if f.is_file()
     ) if cache_dir.exists() else 0
 
-    print_json({
+    return {
         "cacheDir": str(cache_dir),
         "frameCount": len(loaded_map.node_ids),
         "totalKeypoints": total_kp,
         "bytes": cache_bytes,
         "elapsedMs": elapsed_ms,
-    })
-    return 0
+    }
 
 
 def load_legacy_merge_dependencies():

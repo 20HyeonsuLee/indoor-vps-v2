@@ -96,7 +96,9 @@ class PythonBridgeAdapterTest {
         properties.getPython().setExecutable("python3");
         properties.getPython().setBridgeScript(Path.of("scripts/python_bridge/bridge_entry.py"));
         properties.getPython().setBackendSource("/tmp/indoor-vps-v2-missing-python-src");
-        PythonBridgeAdapter adapter = new PythonBridgeAdapter(properties, objectMapper);
+        properties.getPython().getDaemon().setEnabled(false);
+        PythonBridgeAdapter adapter = new PythonBridgeAdapter(
+                properties, objectMapper, new PythonBridgeDaemon(properties, objectMapper));
 
         assertThatThrownBy(() -> adapter.localize(new LocalizeBridgeRequest(
                 "building-1",
@@ -120,7 +122,9 @@ class PythonBridgeAdapterTest {
         properties.getPython().setExecutable("python3");
         properties.getPython().setBridgeScript(Path.of("scripts/python_bridge/bridge_entry.py"));
         properties.getPython().setDevice("cpu");
-        PythonBridgeAdapter adapter = new PythonBridgeAdapter(properties, objectMapper);
+        properties.getPython().getDaemon().setEnabled(false);
+        PythonBridgeAdapter adapter = new PythonBridgeAdapter(
+                properties, objectMapper, new PythonBridgeDaemon(properties, objectMapper));
 
         kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.HealthBridgeResponse health = adapter.health();
 

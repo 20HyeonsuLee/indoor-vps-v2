@@ -27,6 +27,9 @@ indoor:
     bridge-script: ${PYTHON_BRIDGE_SCRIPT:./scripts/python_bridge/bridge_entry.py}
     backend-source: ${PYTHON_BACKEND_SRC:./python/legacy_backend/src}
     timeout-seconds: ${PYTHON_BRIDGE_TIMEOUT_SECONDS:60}
+    build-superpoint-index-timeout-seconds: ${PYTHON_BRIDGE_BUILD_SP_TIMEOUT_SECONDS:600}
+    daemon:
+      enabled: ${PYTHON_BRIDGE_DAEMON_ENABLED:true}
   rtabmap:
     reprocess:
       enabled: ${RTABMAP_REPROCESS_ENABLED:true}
