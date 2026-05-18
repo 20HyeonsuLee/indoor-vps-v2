@@ -142,6 +142,24 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
         height=int(intrinsics["height"]),
     )
 
+    # depthPaths optional, parallel to imagePaths. Empty string / None entries → no depth
+    # for that image (server falls back to 2D-3D PnP).
+    depth_paths = payload.get("depthPaths") or []
+    depth_bytes_list: list[bytes | None] = []
+    for i in range(len(image_bytes_list)):
+        if i >= len(depth_paths):
+            depth_bytes_list.append(None)
+            continue
+        p = depth_paths[i]
+        if not p:
+            depth_bytes_list.append(None)
+            continue
+        try:
+            with open(str(p), "rb") as f:
+                depth_bytes_list.append(f.read())
+        except OSError:
+            depth_bytes_list.append(None)
+
     async def localize_floor(floor_map: dict[str, object]) -> dict[str, object] | None:
         # Use areaId as the SuperPoint cache key so two areas under the same
         # floorId don't share/overwrite each other's index.
@@ -153,6 +171,7 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
                 intrinsics=intrinsics,
                 db_path=str(floor_map["filePath"]),
                 mask_persons=bool(payload.get("maskPersons", False)),
+                depths=depth_bytes_list,
             )
             return {
                 **result,
@@ -179,6 +198,7 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
         "confidence": float(best["confidence"]),
         "numMatches": int(best.get("num_matches", 0)),
         "matchedImageIndex": int(best.get("matched_image_index", 0)),
+        "methodUsed": str(best.get("method_used", "")),
         "floorId": str(best.get("floor_id", "")),
         "areaId": str(best.get("area_id", "")),
         "floorLevel": int(best.get("floor_level", 0)),

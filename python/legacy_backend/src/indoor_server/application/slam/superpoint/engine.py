@@ -31,6 +31,49 @@ def _rotation_to_quat(R: np.ndarray):
     return float(qx), float(qy), float(qz), float(qw)
 
 
+def _horn_align(p_src: np.ndarray, p_dst: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """SVD-based rigid alignment: R, t such that R @ p_src.T + t ≈ p_dst.T."""
+    src_c = p_src.mean(axis=0)
+    dst_c = p_dst.mean(axis=0)
+    H = (p_src - src_c).T @ (p_dst - dst_c)
+    U, _, Vt = np.linalg.svd(H)
+    d = float(np.sign(np.linalg.det(Vt.T @ U.T)))
+    D = np.diag([1.0, 1.0, d])
+    R = Vt.T @ D @ U.T
+    t = dst_c - R @ src_c
+    return R, t
+
+
+def _ransac_3d3d(
+    p_src: np.ndarray,
+    p_dst: np.ndarray,
+    threshold: float = 0.10,
+    iterations: int = 500,
+    min_final_inliers: int = 6,
+):
+    """RANSAC over Horn rigid alignment. Returns (R, t, inlier_idx) or None."""
+    n = len(p_src)
+    if n < 3:
+        return None
+    rng = np.random.default_rng(0)
+    best_inliers = np.array([], dtype=np.int64)
+    for _ in range(iterations):
+        idx = rng.choice(n, 3, replace=False)
+        try:
+            R, t = _horn_align(p_src[idx], p_dst[idx])
+        except np.linalg.LinAlgError:
+            continue
+        pred = p_src @ R.T + t
+        err = np.linalg.norm(pred - p_dst, axis=1)
+        inl = np.where(err < threshold)[0]
+        if len(inl) > len(best_inliers):
+            best_inliers = inl
+    if len(best_inliers) < min_final_inliers:
+        return None
+    R, t = _horn_align(p_src[best_inliers], p_dst[best_inliers])
+    return R, t, best_inliers
+
+
 class SuperPointEngine:
     """Localization engine using SuperPoint + LightGlue."""
 
@@ -71,8 +114,9 @@ class SuperPointEngine:
         images: list[bytes],
         intrinsics: dict | None,
         db_path: str | None,
+        depths: list[bytes | None] | None = None,
     ) -> dict:
-        from .map_manager import SuperPointMapManager
+        from .map_manager import SuperPointMapManager, decode_depth_meters, lift_kps_camera_frame
 
         if intrinsics is None:
             raise ValueError("intrinsics required for SuperPoint localization")
@@ -82,6 +126,8 @@ class SuperPointEngine:
             [0,               intrinsics['fy'], intrinsics['cy']],
             [0,               0,               1              ],
         ], dtype=np.float64)
+        image_w = int(intrinsics['width'])
+        image_h = int(intrinsics['height'])
 
         mgr = SuperPointMapManager()
         loaded = mgr.get_or_load(map_id, db_path)
@@ -108,6 +154,16 @@ class SuperPointEngine:
             q_feats = self._extract(gray)
             q_kps = q_feats['keypoints'][0].cpu().numpy()  # (N, 2)
 
+            # If depth is provided for this frame, pre-lift query SP kp to rtab-cam 3D
+            # for the RGBD (3D-3D) path. None → 2D-3D PnP fallback.
+            q_rtab_3d = None
+            if depths is not None and img_idx < len(depths) and depths[img_idx]:
+                depth_m = decode_depth_meters(depths[img_idx])
+                if depth_m is not None:
+                    q_rtab_3d = lift_kps_camera_frame(
+                        q_kps, depth_m, K, image_w, image_h
+                    )
+
             from .global_descriptor import GlobalDescExtractor
             gray_uint8 = (gray * 255).clip(0, 255).astype(np.uint8)
             q_global = GlobalDescExtractor(self._device).extract(gray_uint8)  # (384,)
@@ -125,6 +181,28 @@ class SuperPointEngine:
 
                 if len(matches) < 4:
                     continue
+
+                # --- RGBD path: 3D-3D rigid alignment when query depth available ---
+                if q_rtab_3d is not None:
+                    rgbd = self._rgbd_estimate(matches, q_rtab_3d, world3d)
+                    if rgbd is not None:
+                        n_in, R_cw, t_cw = rgbd
+                        confidence = min(0.99, max(0.01, n_in / max(len(matches), 1)))
+                        qx, qy, qz, qw = _rotation_to_quat(R_cw)
+                        candidate = {
+                            'num_matches': n_in,
+                            'confidence': confidence,
+                            'matched_image_index': img_idx,
+                            'method_used': 'RGBD',
+                            'pose': {
+                                'x': float(t_cw[0]), 'y': float(t_cw[1]), 'z': float(t_cw[2]),
+                                'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
+                            },
+                        }
+                        if best is None or n_in > best['num_matches']:
+                            best = candidate
+                        continue
+                    # RGBD failed (too few valid pairs or RANSAC underflow) → fall back to PnP.
 
                 pts_2d, pts_3d = [], []
                 for qi, di in matches:
@@ -172,6 +250,7 @@ class SuperPointEngine:
                     'num_matches': n_in,
                     'confidence': confidence,
                     'matched_image_index': img_idx,
+                    'method_used': 'PnP',
                     'pose': {
                         'x': float(t_cw[0]), 'y': float(t_cw[1]), 'z': float(t_cw[2]),
                         'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
@@ -185,9 +264,40 @@ class SuperPointEngine:
 
         logger.info(
             f"[SuperPoint] map={map_id} inliers={best['num_matches']} "
-            f"confidence={best['confidence']:.3f}"
+            f"confidence={best['confidence']:.3f} method={best.get('method_used')}"
         )
         return {**best, 'map_id': map_id, 'method': 'SuperPoint+LightGlue'}
+
+    def _rgbd_estimate(
+        self,
+        matches: np.ndarray,           # (P, 2) [qi, di]
+        q_rtab_3d: np.ndarray,         # (N, 3) query SP kp in rtab-cam frame, NaN if no depth
+        world3d: np.ndarray,           # (M, 3) DB world 3D, NaN if no depth
+    ):
+        """3D-3D Horn RANSAC. Returns (n_inliers, R_cam→world, t) or None.
+
+        Result R, t directly equals rtabmap-stored "T_world_camera" convention.
+        """
+        pts_q, pts_w = [], []
+        for qi, di in matches:
+            q = q_rtab_3d[qi]
+            w = world3d[di]
+            if np.any(np.isnan(q)) or np.any(np.isnan(w)):
+                continue
+            pts_q.append(q)
+            pts_w.append(w)
+        if len(pts_q) < 6:
+            return None
+        pts_q = np.asarray(pts_q, dtype=np.float64)
+        pts_w = np.asarray(pts_w, dtype=np.float64)
+        result = _ransac_3d3d(pts_q, pts_w, threshold=0.10, iterations=500, min_final_inliers=6)
+        if result is None:
+            return None
+        R, t, inliers = result
+        # confidence guard — inlier ratio threshold mirrors PnP path.
+        if len(inliers) / max(len(pts_q), 1) < 0.30:
+            return None
+        return len(inliers), R, t
 
     async def localize(
         self,
@@ -196,6 +306,7 @@ class SuperPointEngine:
         intrinsics: dict | None = None,
         initial_pose: dict | None = None,
         db_path: str | None = None,
+        depths: list[bytes | None] | None = None,
         **kwargs,
     ) -> dict:
-        return await asyncio.to_thread(self._localize_sync, map_id, images, intrinsics, db_path)
+        return await asyncio.to_thread(self._localize_sync, map_id, images, intrinsics, db_path, depths)

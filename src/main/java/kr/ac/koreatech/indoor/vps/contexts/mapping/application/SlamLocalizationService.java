@@ -60,6 +60,7 @@ public class SlamLocalizationService {
         }
 
         List<Path> tempFiles = new ArrayList<>();
+        List<Path> tempDepthFiles = new ArrayList<>();
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("indoor-localize-");
@@ -70,9 +71,24 @@ public class SlamLocalizationService {
                 Files.write(file, image.content());
                 tempFiles.add(file);
             }
+            List<String> depthPaths = new ArrayList<>();
+            List<LocalizeCommand.DepthPayload> depths = command.depths() == null
+                    ? List.of() : command.depths();
+            for (int i = 0; i < command.images().size(); i++) {
+                LocalizeCommand.DepthPayload d = i < depths.size() ? depths.get(i) : null;
+                if (d == null || d.content() == null || d.content().length == 0) {
+                    depthPaths.add("");
+                    continue;
+                }
+                Path df = tempDir.resolve("%02d-depth-%s".formatted(i, safeName(d.originalFilename())));
+                Files.write(df, d.content());
+                tempDepthFiles.add(df);
+                depthPaths.add(df.toString());
+            }
             LocalizeBridgeResponse response = bridge.localize(new LocalizeBridgeRequest(
                     resolvedBuildingId,
                     tempFiles.stream().map(Path::toString).toList(),
+                    depthPaths,
                     properties.getStorageRoot().toString(),
                     floorMaps
             ));
@@ -89,6 +105,12 @@ public class SlamLocalizationService {
             throw new ClientApiException(HttpStatus.SERVICE_UNAVAILABLE, "SLAM_LOCALIZE_FAILED", e.getMessage());
         } finally {
             for (Path tempFile : tempFiles) {
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (IOException ignored) {
+                }
+            }
+            for (Path tempFile : tempDepthFiles) {
                 try {
                     Files.deleteIfExists(tempFile);
                 } catch (IOException ignored) {

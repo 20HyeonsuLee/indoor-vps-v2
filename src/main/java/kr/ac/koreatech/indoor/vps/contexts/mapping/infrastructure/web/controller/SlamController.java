@@ -34,13 +34,15 @@ public class SlamController {
     @PostMapping("/v3/localize")
     public SLAMLocalizeResponse localizeUploadedImages(
             @RequestParam("images") List<MultipartFile> images,
+            @RequestParam(name = "depths", required = false) List<MultipartFile> depths,
             @RequestParam(name = "building_id", required = false) String buildingId,
             @RequestParam(name = "map_id", required = false) String mapId,
             @RequestParam(name = "floor_id", required = false) String floorId
     ) {
         CaptureRecord capture = fixtureCapture.captureLocalizeImages(images, buildingId, mapId);
         try {
-            LocalizeCommand command = new LocalizeCommand(toImagePayloads(images), buildingId, mapId, floorId);
+            LocalizeCommand command = new LocalizeCommand(
+                    toImagePayloads(images), toDepthPayloads(depths), buildingId, mapId, floorId);
             SLAMLocalizeResult result = localizationService.localize(command);
             SLAMLocalizeResponse response = toResponse(result);
             fixtureCapture.writeResponse(capture, response);
@@ -59,6 +61,23 @@ public class SlamController {
                 .filter(f -> f != null && !f.isEmpty())
                 .map(f -> new ImagePayload(readBytes(f), f.getOriginalFilename(), f.getContentType()))
                 .toList();
+    }
+
+    private List<LocalizeCommand.DepthPayload> toDepthPayloads(List<MultipartFile> files) {
+        if (files == null) {
+            return List.of();
+        }
+        // Preserve order/length so depth at index i pairs with image at index i.
+        // Empty entries become null so server falls back to 2D-3D PnP for that frame.
+        java.util.List<LocalizeCommand.DepthPayload> out = new java.util.ArrayList<>();
+        for (MultipartFile f : files) {
+            if (f == null || f.isEmpty()) {
+                out.add(null);
+            } else {
+                out.add(new LocalizeCommand.DepthPayload(readBytes(f), f.getOriginalFilename()));
+            }
+        }
+        return out;
     }
 
     private static byte[] readBytes(MultipartFile file) {

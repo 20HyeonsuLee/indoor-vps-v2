@@ -14,9 +14,14 @@ public final class BridgeContracts {
     public record LocalizeBridgeRequest(
             String buildingId,
             List<String> imagePaths,
+            List<String> depthPaths,
             String storageRoot,
             List<FloorMapBridgeRef> floorMaps
     ) {
+        public LocalizeBridgeRequest(String buildingId, List<String> imagePaths,
+                String storageRoot, List<FloorMapBridgeRef> floorMaps) {
+            this(buildingId, imagePaths, List.of(), storageRoot, floorMaps);
+        }
     }
 
     public record FloorMapBridgeRef(

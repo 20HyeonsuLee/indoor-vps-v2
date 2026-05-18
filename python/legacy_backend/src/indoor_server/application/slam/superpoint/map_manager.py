@@ -119,29 +119,30 @@ def _load_gray_float(conn: sqlite3.Connection, node_id: int) -> np.ndarray | Non
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
 
-def _load_depth_meters(conn: sqlite3.Connection, node_id: int) -> np.ndarray | None:
-    """Load LiDAR depth image as (H, W) float32 meters.
-
-    iOS LiDAR depth is delivered as RGBA PNG where each pixel's 4 bytes encode a
-    little-endian float32 depth in meters. Falls back to single-channel 16-bit
-    (mm) when the blob is not the iOS RGBA layout.
-    """
-    row = conn.execute("SELECT depth FROM Data WHERE id = ?", (node_id,)).fetchone()
-    if not row or not row[0]:
+def decode_depth_meters(depth_blob) -> np.ndarray | None:
+    """PNG bytes → (H, W) float32 depth in meters. iOS LiDAR layout (RGBA float32)
+    우선, fallback으로 16-bit mm 또는 32-bit float single-channel."""
+    if not depth_blob:
         return None
-    arr = np.frombuffer(bytes(row[0]), dtype=np.uint8)
+    arr = np.frombuffer(bytes(depth_blob), dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
     if img is None:
         return None
-    # RGBA float-packed: shape (H, W, 4) uint8 → reinterpret as float32 (H, W)
     if img.ndim == 3 and img.shape[2] == 4 and img.dtype == np.uint8:
         return np.ascontiguousarray(img).view(np.float32).reshape(img.shape[:2])
-    # 16-bit mm
     if img.dtype == np.uint16:
         return img.astype(np.float32) / 1000.0
     if img.dtype == np.float32 and img.ndim == 2:
         return img
     return None
+
+
+def _load_depth_meters(conn: sqlite3.Connection, node_id: int) -> np.ndarray | None:
+    """Load LiDAR depth image as (H, W) float32 meters from rtabmap.db Data table."""
+    row = conn.execute("SELECT depth FROM Data WHERE id = ?", (node_id,)).fetchone()
+    if not row or not row[0]:
+        return None
+    return decode_depth_meters(bytes(row[0]))
 
 
 _C_RTAB_TO_OPENCV = np.array(
@@ -215,6 +216,60 @@ def _lift_kps_with_depth(
     p_rtab_cam = p_opencv_cam @ _C_RTAB_TO_OPENCV  # row form of (C^T @ p_col)
     p_world = p_rtab_cam @ R.T + t
     out[valid] = p_world.astype(np.float32)
+    return out
+
+
+def lift_kps_camera_frame(
+    sp_kps: np.ndarray,            # (N, 2) SP kp in image (full-res) coords
+    depth_m: np.ndarray,           # (Hd, Wd) float32 meters (may be lower-res)
+    K: np.ndarray,                 # 3x3 image-space intrinsics (full-res, opencv convention)
+    image_w: int,
+    image_h: int,
+) -> np.ndarray:
+    """Query SP kp → rtabmap-cam frame 3D. invalid depth → NaN.
+    pose 적용 안함 (camera pose가 미지수일 때 사용)."""
+    n = sp_kps.shape[0]
+    out = np.full((n, 3), np.nan, dtype=np.float32)
+    if depth_m is None or depth_m.size == 0:
+        return out
+    Hd, Wd = depth_m.shape[:2]
+    sx = Wd / float(image_w)
+    sy = Hd / float(image_h)
+    fx, fy = K[0, 0], K[1, 1]
+    cx, cy = K[0, 2], K[1, 2]
+
+    u_img = sp_kps[:, 0].astype(np.float32)
+    v_img = sp_kps[:, 1].astype(np.float32)
+    u_d = u_img * sx
+    v_d = v_img * sy
+    in_bounds = (u_d >= 0) & (u_d <= Wd - 1) & (v_d >= 0) & (v_d <= Hd - 1)
+    if not np.any(in_bounds):
+        return out
+
+    u0 = np.clip(np.floor(u_d).astype(np.int32), 0, Wd - 1)
+    v0 = np.clip(np.floor(v_d).astype(np.int32), 0, Hd - 1)
+    u1 = np.clip(u0 + 1, 0, Wd - 1)
+    v1 = np.clip(v0 + 1, 0, Hd - 1)
+    du = (u_d - u0).astype(np.float32)
+    dv = (v_d - v0).astype(np.float32)
+    d00 = depth_m[v0, u0]
+    d01 = depth_m[v0, u1]
+    d10 = depth_m[v1, u0]
+    d11 = depth_m[v1, u1]
+    z = (d00 * (1 - du) + d01 * du) * (1 - dv) + (d10 * (1 - du) + d11 * du) * dv
+
+    valid = in_bounds & np.isfinite(z) & (z > 0)
+    if not np.any(valid):
+        return out
+
+    z_v = z[valid].astype(np.float64)
+    u_v = u_img[valid].astype(np.float64)
+    v_v = v_img[valid].astype(np.float64)
+    x_cam = (u_v - cx) * z_v / fx
+    y_cam = (v_v - cy) * z_v / fy
+    p_opencv = np.stack([x_cam, y_cam, z_v], axis=1)
+    p_rtab = p_opencv @ _C_RTAB_TO_OPENCV  # opencv-cam → rtabmap-cam (row form)
+    out[valid] = p_rtab.astype(np.float32)
     return out
 
 
