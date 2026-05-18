@@ -1,5 +1,6 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,6 +34,7 @@ public final class BridgeContracts {
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record LocalizeBridgeResponse(
             Map<String, Object> pose,
             double confidence,
