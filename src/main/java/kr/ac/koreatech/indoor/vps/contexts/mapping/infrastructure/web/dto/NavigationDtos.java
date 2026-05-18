@@ -1,6 +1,5 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto;
 
-import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,7 +46,8 @@ public final class NavigationDtos {
             double startX,
             double startY,
             double startZ,
-            @NotBlank String destinationName,
+            UUID destinationId,
+            String destinationName,
             RoutePreference preference,
             VerticalPreference verticalPreference
     ) {

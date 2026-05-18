@@ -12,6 +12,10 @@ public interface PoiCanonicalRepository extends JpaRepository<PoiCanonicalEntity
 
     List<PoiCanonicalEntity> findByScanIdOrderByCanonicalId(UUID scanId);
 
+    java.util.Optional<PoiCanonicalEntity> findByCanonicalIdAndBuilding_BuildingId(
+            UUID canonicalId, UUID buildingId
+    );
+
     @Query("""
             select p from PoiCanonicalEntity p
             where p.building.buildingId = :buildingId

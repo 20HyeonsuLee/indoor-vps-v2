@@ -47,7 +47,11 @@ public class NavigationQueryContext {
         return floorQuery.activeScanForArea(floorId, areaId);
     }
 
-    public Optional<PoiRouteTarget> findTarget(UUID buildingId, String destinationName) {
+    public Optional<PoiRouteTarget> findTargetByName(UUID buildingId, String destinationName) {
         return targetResolver.find(buildingId, destinationName);
+    }
+
+    public Optional<PoiRouteTarget> findTargetById(UUID buildingId, UUID destinationId) {
+        return targetResolver.findById(buildingId, destinationId);
     }
 }

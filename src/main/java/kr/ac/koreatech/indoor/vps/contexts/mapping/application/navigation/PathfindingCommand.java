@@ -9,10 +9,11 @@ public record PathfindingCommand(
         double startX,
         double startY,
         double startZ,
+        UUID destinationId,
         String destinationName
 ) {
     public PathfindingCommand(UUID startScanId, Integer startFloorLevel,
             double startX, double startY, double startZ, String destinationName) {
-        this(startScanId, null, startFloorLevel, startX, startY, startZ, destinationName);
+        this(startScanId, null, startFloorLevel, startX, startY, startZ, null, destinationName);
     }
 }

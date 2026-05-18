@@ -26,6 +26,15 @@ public class PoiRouteTargetResolver {
                 .findFirst();
     }
 
+    public Optional<PoiRouteTarget> findById(UUID buildingId, UUID destinationId) {
+        if (destinationId == null) {
+            return Optional.empty();
+        }
+        return poiCanonicalRepository
+                .findByCanonicalIdAndBuilding_BuildingId(destinationId, buildingId)
+                .map(this::toTarget);
+    }
+
     private PoiRouteTarget toTarget(PoiCanonicalEntity poi) {
         Point point = firstPoint(poi);
         return new PoiRouteTarget(

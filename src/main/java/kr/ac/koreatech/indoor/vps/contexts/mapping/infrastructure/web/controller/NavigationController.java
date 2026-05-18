@@ -66,6 +66,7 @@ public class NavigationController {
                 request.startX(),
                 request.startY(),
                 request.startZ(),
+                request.destinationId(),
                 request.destinationName()
         ));
         return toPathfindingResponse(result);

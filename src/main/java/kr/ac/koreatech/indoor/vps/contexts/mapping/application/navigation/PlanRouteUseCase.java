@@ -51,7 +51,7 @@ public class PlanRouteUseCase {
                 command.startZ(),
                 command.startFloorLevel()
         );
-        Optional<PoiRouteTarget> targetOpt = queryContext.findTarget(buildingId, command.destinationName());
+        Optional<PoiRouteTarget> targetOpt = resolveTarget(buildingId, command);
         if (targetOpt.isEmpty()) {
             return new PathfindingResult(
                     buildingId,
@@ -59,7 +59,11 @@ public class PlanRouteUseCase {
                     0,
                     List.of(new PathStep(1, command.startFloorLevel(), start, "Start", null)),
                     List.of(),
-                    metadataOf("destinationName", command.destinationName(), "destinationFound", false)
+                    metadataOf(
+                            "destinationId", command.destinationId(),
+                            "destinationName", command.destinationName(),
+                            "destinationFound", false
+                    )
             );
         }
         PoiRouteTarget target = targetOpt.get();
@@ -108,7 +112,11 @@ public class PlanRouteUseCase {
                             graphService.estimateWalkingSeconds(route.totalDistance()),
                             steps,
                             List.of(),
-                            metadataOf("destinationName", command.destinationName(), "destinationFound", true)
+                            metadataOf(
+                                    "destinationId", command.destinationId(),
+                                    "destinationName", command.destinationName(),
+                                    "destinationFound", true
+                            )
                     );
                 }
             }
@@ -126,7 +134,11 @@ public class PlanRouteUseCase {
                 graphService.estimateWalkingSeconds(distance),
                 steps,
                 List.of(),
-                metadataOf("destinationName", command.destinationName(), "destinationFound", true)
+                metadataOf(
+                        "destinationId", command.destinationId(),
+                        "destinationName", command.destinationName(),
+                        "destinationFound", true
+                )
         );
     }
 
@@ -245,6 +257,13 @@ public class PlanRouteUseCase {
                     EdgeType.poi_spur));
         }
         return startId;
+    }
+
+    private Optional<PoiRouteTarget> resolveTarget(UUID buildingId, PathfindingCommand command) {
+        if (command.destinationId() != null) {
+            return queryContext.findTargetById(buildingId, command.destinationId());
+        }
+        return queryContext.findTargetByName(buildingId, command.destinationName());
     }
 
     private Integer floorLevelFor(RouteNode node, CompositeGraph graph) {
