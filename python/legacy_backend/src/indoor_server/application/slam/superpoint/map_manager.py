@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 MAX_CACHED_MAPS = 5
 TOP_K = 5
 
+# Bump when the build-time world3d derivation changes (e.g., ORB-mediated → depth-lift).
+# Caches with older version trigger rebuild on next load.
+CACHE_VERSION = 2
+
 
 # ---------------------------------------------------------------------------
 # DB helpers
@@ -113,6 +117,105 @@ def _load_gray_float(conn: sqlite3.Connection, node_id: int) -> np.ndarray | Non
     if bgr is None:
         return None
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+
+
+def _load_depth_meters(conn: sqlite3.Connection, node_id: int) -> np.ndarray | None:
+    """Load LiDAR depth image as (H, W) float32 meters.
+
+    iOS LiDAR depth is delivered as RGBA PNG where each pixel's 4 bytes encode a
+    little-endian float32 depth in meters. Falls back to single-channel 16-bit
+    (mm) when the blob is not the iOS RGBA layout.
+    """
+    row = conn.execute("SELECT depth FROM Data WHERE id = ?", (node_id,)).fetchone()
+    if not row or not row[0]:
+        return None
+    arr = np.frombuffer(bytes(row[0]), dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        return None
+    # RGBA float-packed: shape (H, W, 4) uint8 → reinterpret as float32 (H, W)
+    if img.ndim == 3 and img.shape[2] == 4 and img.dtype == np.uint8:
+        return np.ascontiguousarray(img).view(np.float32).reshape(img.shape[:2])
+    # 16-bit mm
+    if img.dtype == np.uint16:
+        return img.astype(np.float32) / 1000.0
+    if img.dtype == np.float32 and img.ndim == 2:
+        return img
+    return None
+
+
+_C_RTAB_TO_OPENCV = np.array(
+    [[0, -1, 0],
+     [0, 0, -1],
+     [1, 0, 0]],
+    dtype=np.float64,
+)  # v_opencv = C @ v_rtabmap-cam
+_C_OPENCV_TO_RTAB = _C_RTAB_TO_OPENCV.T  # v_rtabmap-cam = C^T @ v_opencv
+
+
+def _lift_kps_with_depth(
+    sp_kps: np.ndarray,            # (N, 2) SuperPoint kp in image (full-res) coords
+    depth_m: np.ndarray,           # (Hd, Wd) float32 meters (may be lower-res than image)
+    K: np.ndarray,                 # 3x3 image-space intrinsics (full-res, opencv convention)
+    T_world_cam: np.ndarray,       # 3x4 rtabmap pose (rtabmap-cam → rtabmap-world)
+    image_w: int,
+    image_h: int,
+) -> np.ndarray:
+    """SuperPoint kp 위치에서 depth 샘플 → camera-frame 3D → world-frame 3D.
+
+    depth resolution이 image와 다르면 비례 스케일링으로 (u, v)를 depth 좌표로
+    매핑 후 bilinear 보간. invalid depth (≤0, NaN, Inf) 픽셀은 NaN.
+    """
+    n = sp_kps.shape[0]
+    out = np.full((n, 3), np.nan, dtype=np.float32)
+    if depth_m.size == 0:
+        return out
+
+    Hd, Wd = depth_m.shape[:2]
+    sx = Wd / float(image_w)
+    sy = Hd / float(image_h)
+    fx, fy = K[0, 0], K[1, 1]
+    cx, cy = K[0, 2], K[1, 2]
+    R = T_world_cam[:, :3]
+    t = T_world_cam[:, 3]
+
+    u_img = sp_kps[:, 0].astype(np.float32)
+    v_img = sp_kps[:, 1].astype(np.float32)
+    u_d = u_img * sx
+    v_d = v_img * sy
+    in_bounds = (u_d >= 0) & (u_d <= Wd - 1) & (v_d >= 0) & (v_d <= Hd - 1)
+    if not np.any(in_bounds):
+        return out
+
+    # Bilinear sample
+    u0 = np.clip(np.floor(u_d).astype(np.int32), 0, Wd - 1)
+    v0 = np.clip(np.floor(v_d).astype(np.int32), 0, Hd - 1)
+    u1 = np.clip(u0 + 1, 0, Wd - 1)
+    v1 = np.clip(v0 + 1, 0, Hd - 1)
+    du = (u_d - u0).astype(np.float32)
+    dv = (v_d - v0).astype(np.float32)
+    d00 = depth_m[v0, u0]
+    d01 = depth_m[v0, u1]
+    d10 = depth_m[v1, u0]
+    d11 = depth_m[v1, u1]
+    z = (d00 * (1 - du) + d01 * du) * (1 - dv) + (d10 * (1 - du) + d11 * du) * dv
+
+    valid = in_bounds & np.isfinite(z) & (z > 0)
+    if not np.any(valid):
+        return out
+
+    z_v = z[valid].astype(np.float64)
+    u_v = u_img[valid].astype(np.float64)
+    v_v = v_img[valid].astype(np.float64)
+    x_cam = (u_v - cx) * z_v / fx
+    y_cam = (v_v - cy) * z_v / fy
+    p_opencv_cam = np.stack([x_cam, y_cam, z_v], axis=1)
+    # opencv-cam → rtabmap-cam (so T_world_cam, which is rtabmap-cam → rtabmap-world,
+    # produces consistent world points).
+    p_rtab_cam = p_opencv_cam @ _C_RTAB_TO_OPENCV  # row form of (C^T @ p_col)
+    p_world = p_rtab_cam @ R.T + t
+    out[valid] = p_world.astype(np.float32)
+    return out
 
 
 def _parse_calibration_K_and_local(blob: bytes) -> tuple[np.ndarray, np.ndarray]:
@@ -250,6 +353,13 @@ class SuperPointLoadedMap:
             )
             return False
 
+        if meta.get("cache_version", 1) < CACHE_VERSION:
+            logger.info(
+                "[SuperPoint] map '%s' cache version %s < %s — rebuilding",
+                self.map_id, meta.get("cache_version", 1), CACHE_VERSION,
+            )
+            return False
+
         required = ["keypoints.npy", "descriptors.npy", "frame_offsets.npy",
                     "world_points.npy", "global_descriptors.npy"]
         for fname in required:
@@ -344,6 +454,7 @@ class SuperPointLoadedMap:
                 "map_id": self.map_id,
                 "db_path": self.db_path,
                 "db_mtime": self._current_db_mtime(),
+                "cache_version": CACHE_VERSION,
                 "frame_ids": self.node_ids,
                 "image_sizes": image_sizes,
                 "total_keypoints": int(offsets[-1]),
@@ -376,12 +487,33 @@ class SuperPointLoadedMap:
             ).fetchall()]
 
             transforms = _parse_node_transforms(conn)
-            world_feats = _load_world_features(conn, transforms)
+
+            # Read K from any node's calibration blob (assume constant intrinsics
+            # across the scan — single camera, no zoom).
+            K_for_lift: np.ndarray | None = None
+            for cal_id in all_ids:
+                cal_row = conn.execute(
+                    "SELECT calibration FROM Data WHERE id = ?", (cal_id,)
+                ).fetchone()
+                if cal_row and cal_row[0]:
+                    try:
+                        K_for_lift, _ = _parse_calibration_K_and_local(bytes(cal_row[0]))
+                        break
+                    except ValueError:
+                        continue
+            if K_for_lift is None:
+                logger.warning("[SuperPoint] '%s': no calibration → fallback to ORB-derived world3d",
+                               self.map_id)
+                world_feats = _load_world_features(conn, transforms)
+            else:
+                world_feats = None  # depth-direct path
 
             global_descs: list[torch.Tensor] = []
             from .global_descriptor import GlobalDescExtractor
             global_desc_ext = GlobalDescExtractor(self.device)
 
+            depth_hits = 0
+            depth_misses = 0
             for node_id in all_ids:
                 img = _load_gray_float(conn, node_id)
                 if img is None:
@@ -400,19 +532,39 @@ class SuperPointLoadedMap:
                 global_descs.append(global_desc_ext.extract(img_uint8))  # (384,)
 
                 sp_kps = cpu['keypoints'][0].numpy()   # (N, 2)
-                if node_id in world_feats:
+                world3d: np.ndarray | None = None
+
+                # 1. Direct depth lift (preferred — uses LiDAR depth at SP kp locations)
+                if K_for_lift is not None and node_id in transforms:
+                    depth_m = _load_depth_meters(conn, node_id)
+                    if depth_m is not None:
+                        world3d = _lift_kps_with_depth(
+                            sp_kps, depth_m, K_for_lift, transforms[node_id],
+                            image_w=img.shape[1], image_h=img.shape[0],
+                        )
+                        if np.isfinite(world3d).any():
+                            depth_hits += 1
+                        else:
+                            depth_misses += 1
+
+                # 2. Fallback to ORB feature 8px-nearest path
+                if world3d is None and world_feats is not None and node_id in world_feats:
                     r2d, w3d = world_feats[node_id]
-                    self.keyframe_world3d[node_id] = _assign_world_3d(sp_kps, r2d, w3d)
-                else:
-                    self.keyframe_world3d[node_id] = np.full(
-                        (len(sp_kps), 3), float('nan'), dtype=np.float32
-                    )
+                    world3d = _assign_world_3d(sp_kps, r2d, w3d)
+
+                if world3d is None:
+                    world3d = np.full((len(sp_kps), 3), float('nan'), dtype=np.float32)
+                self.keyframe_world3d[node_id] = world3d
 
                 n = len(self.node_ids)
                 if n % 100 == 0:
                     logger.info(
                         f"[SuperPoint] '{self.map_id}': indexed {n}/{len(all_ids)} frames"
                     )
+            logger.info(
+                "[SuperPoint] '%s': depth-lift hits=%d misses=%d",
+                self.map_id, depth_hits, depth_misses,
+            )
         finally:
             conn.close()
 

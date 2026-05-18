@@ -3,6 +3,7 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.controlle
 import static kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.web.dto.MapDtos.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,9 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.Naviga
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaPolygonEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapNodeEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.PoiCanonicalEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.VerticalConnectorStopEntity;
+import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -23,7 +27,26 @@ import org.springframework.stereotype.Component;
 @Component
 public class FloorMapResponseMapper {
 
-    public FloorMapNode floorMapNode(MapNodeEntity node) {
+    public FloorMapNode floorMapNode(
+            MapNodeEntity node,
+            Map<UUID, PoiCanonicalEntity> poiByRouteNodeId,
+            Map<UUID, VerticalConnectorStopEntity> stopByRouteNodeId
+    ) {
+        FloorMapConnector connector = null;
+        String category = null;
+        VerticalConnectorStopEntity stop = stopByRouteNodeId.get(node.getNodeId());
+        if (stop != null) {
+            connector = new FloorMapConnector(
+                    stop.getConnector().getConnectorType(),
+                    stop.getConnector().getConnectorKey()
+            );
+            category = stop.getConnector().getConnectorType();
+        } else {
+            PoiCanonicalEntity poi = poiByRouteNodeId.get(node.getNodeId());
+            if (poi != null) {
+                category = poi.getCategory();
+            }
+        }
         return new FloorMapNode(
                 node.getNodeId(),
                 node.getNodeType().name(),
@@ -31,8 +54,88 @@ public class FloorMapResponseMapper {
                 NavigationGeometry.y(node.getGeom()),
                 NavigationGeometry.z(node.getGeom()),
                 node.getLabel(),
-                null
+                category,
+                connector
         );
+    }
+
+    public List<FloorMapDestination> destinations(
+            List<PoiCanonicalEntity> pois,
+            Map<UUID, VerticalConnectorStopEntity> stopByRouteNodeId
+    ) {
+        List<FloorMapDestination> out = new ArrayList<>();
+        for (PoiCanonicalEntity p : pois) {
+            if (p.getRouteNodeId() != null && stopByRouteNodeId.containsKey(p.getRouteNodeId())) {
+                // 층간연결 stop POI는 connectors[]로 분리되므로 destinations에서 제외.
+                continue;
+            }
+            Point point = p.getDisplayPoint() != null ? p.getDisplayPoint() : p.getWorldPose();
+            out.add(new FloorMapDestination(
+                    p.getCanonicalId(),
+                    p.getRouteNodeId(),
+                    p.getName(),
+                    p.getLabel(),
+                    p.getCategory(),
+                    point == null ? 0.0 : NavigationGeometry.x(point),
+                    point == null ? 0.0 : NavigationGeometry.y(point),
+                    point == null ? 0.0 : NavigationGeometry.z(point)
+            ));
+        }
+        return out;
+    }
+
+    public List<FloorMapConnectorRef> connectors(
+            List<VerticalConnectorStopEntity> stopsInArea,
+            List<VerticalConnectorStopEntity> stopsInBuilding,
+            Map<UUID, MapNodeEntity> nodeById
+    ) {
+        Map<UUID, List<VerticalConnectorStopEntity>> stopsByConnector = new HashMap<>();
+        for (VerticalConnectorStopEntity s : stopsInBuilding) {
+            stopsByConnector
+                    .computeIfAbsent(s.getConnector().getConnectorId(), k -> new ArrayList<>())
+                    .add(s);
+        }
+
+        List<FloorMapConnectorRef> out = new ArrayList<>();
+        for (VerticalConnectorStopEntity localStop : stopsInArea) {
+            UUID connectorId = localStop.getConnector().getConnectorId();
+            List<VerticalConnectorStopEntity> siblings = stopsByConnector.getOrDefault(connectorId, List.of());
+            List<FloorMapConnectorStop> stopsOut = new ArrayList<>();
+            for (VerticalConnectorStopEntity sib : siblings) {
+                MapNodeEntity refNode = sib.getRouteNodeId() == null ? null : nodeById.get(sib.getRouteNodeId());
+                Double sx = null, sy = null, sz = null;
+                if (refNode != null) {
+                    sx = NavigationGeometry.x(refNode.getGeom());
+                    sy = NavigationGeometry.y(refNode.getGeom());
+                    sz = NavigationGeometry.z(refNode.getGeom());
+                }
+                stopsOut.add(new FloorMapConnectorStop(
+                        sib.getArea().getFloor().getFloorId(),
+                        sib.getArea().getFloor().getLevel(),
+                        sib.getArea().getAreaId(),
+                        sib.getArea().getLabel(),
+                        sib.getRouteNodeId(),
+                        sx, sy, sz
+                ));
+            }
+            MapNodeEntity localNode = localStop.getRouteNodeId() == null ? null : nodeById.get(localStop.getRouteNodeId());
+            Double lx = null, ly = null, lz = null;
+            if (localNode != null) {
+                lx = NavigationGeometry.x(localNode.getGeom());
+                ly = NavigationGeometry.y(localNode.getGeom());
+                lz = NavigationGeometry.z(localNode.getGeom());
+            }
+            out.add(new FloorMapConnectorRef(
+                    connectorId,
+                    localStop.getConnector().getConnectorType(),
+                    localStop.getConnector().getConnectorKey(),
+                    localStop.getConnector().getName(),
+                    localStop.getRouteNodeId(),
+                    lx, ly, lz,
+                    stopsOut
+            ));
+        }
+        return out;
     }
 
     public FloorMapEdge floorMapEdge(MapEdgeEntity edge) {

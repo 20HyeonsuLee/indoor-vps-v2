@@ -7,12 +7,16 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaPolygonEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapEdgeEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapNodeEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.PoiCanonicalEntity;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.VerticalConnectorStopEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteEdge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.navigation.RouteNode;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.FloorAreaPolygonRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapEdgeRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.MapNodeRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.PoiCanonicalRepository;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.VerticalConnectorStopRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +35,8 @@ public class GraphQueryFacade {
     private final MapEdgeRepository mapEdgeRepository;
     private final BuildJobRepository buildJobRepository;
     private final FloorAreaPolygonRepository polygonRepository;
+    private final PoiCanonicalRepository poiCanonicalRepository;
+    private final VerticalConnectorStopRepository stopRepository;
     private final RouteGraphMapper graphMapper;
 
     public GraphQueryFacade(
@@ -38,12 +44,16 @@ public class GraphQueryFacade {
             MapEdgeRepository mapEdgeRepository,
             BuildJobRepository buildJobRepository,
             FloorAreaPolygonRepository polygonRepository,
+            PoiCanonicalRepository poiCanonicalRepository,
+            VerticalConnectorStopRepository stopRepository,
             RouteGraphMapper graphMapper
     ) {
         this.mapNodeRepository = mapNodeRepository;
         this.mapEdgeRepository = mapEdgeRepository;
         this.buildJobRepository = buildJobRepository;
         this.polygonRepository = polygonRepository;
+        this.poiCanonicalRepository = poiCanonicalRepository;
+        this.stopRepository = stopRepository;
         this.graphMapper = graphMapper;
     }
 
@@ -65,6 +75,18 @@ public class GraphQueryFacade {
 
     public List<FloorAreaPolygonEntity> polygonEntities(UUID scanId) {
         return polygonRepository.findByScanIdOrderByAreaId(scanId);
+    }
+
+    public List<PoiCanonicalEntity> poisForScan(UUID scanId) {
+        return poiCanonicalRepository.findByScanIdOrderByCanonicalId(scanId);
+    }
+
+    public List<VerticalConnectorStopEntity> stopsForArea(UUID areaId) {
+        return stopRepository.findByArea_AreaId(areaId);
+    }
+
+    public List<VerticalConnectorStopEntity> stopsForBuilding(UUID buildingId) {
+        return stopRepository.findByConnector_Building_BuildingId(buildingId);
     }
 
     public Optional<UUID> latestBuildJobId(UUID scanId) {

@@ -47,11 +47,49 @@ public final class MapDtos {
             double y,
             double z,
             String label,
+            String category,
             FloorMapConnector connector
     ) {
     }
 
     public record FloorMapEdge(UUID id, UUID fromNodeId, UUID toNodeId, double lengthM, String type) {
+    }
+
+    public record FloorMapDestination(
+            UUID id,
+            UUID routeNodeId,
+            String name,
+            String label,
+            String category,
+            double x,
+            double y,
+            double z
+    ) {
+    }
+
+    public record FloorMapConnectorStop(
+            UUID floorId,
+            int floorLevel,
+            UUID areaId,
+            String areaLabel,
+            UUID routeNodeId,
+            Double x,
+            Double y,
+            Double z
+    ) {
+    }
+
+    public record FloorMapConnectorRef(
+            UUID connectorId,
+            String type,
+            String key,
+            String name,
+            UUID routeNodeId,
+            Double x,
+            Double y,
+            Double z,
+            List<FloorMapConnectorStop> stops
+    ) {
     }
 
     public record FloorMapResponse(
@@ -66,6 +104,8 @@ public final class MapDtos {
             Map<String, Object> polygon,
             List<FloorMapNode> nodes,
             List<FloorMapEdge> edges,
+            List<FloorMapDestination> destinations,
+            List<FloorMapConnectorRef> connectors,
             String etag
     ) {
     }

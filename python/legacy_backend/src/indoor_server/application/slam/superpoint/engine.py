@@ -89,8 +89,14 @@ class SuperPointEngine:
         if not loaded.node_ids:
             raise ValueError("No keyframes with stored images in this map")
 
-        # RTABMap camera-frame → OpenCV optical-frame conversion matrix
-        C = np.array([[0, 0, 1], [0, -1, 0], [1, 0, 0]], dtype=np.float64)
+        # RTABMap camera-frame → OpenCV optical-frame conversion matrix.
+        # rtabmap-cam (ROS body): x=forward, y=left, z=up
+        # opencv-cam (optical):   x=right,   y=down, z=forward
+        # v_opencv = C @ v_rtabmap-cam
+        #   x_fwd(rtabmap) -> z_fwd(opencv)        -> column [0, 0, 1]
+        #   y_left(rtabmap) -> -x_right(opencv)    -> column [-1, 0, 0]
+        #   z_up(rtabmap)   -> -y_down(opencv)     -> column [0, -1, 0]
+        C = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]], dtype=np.float64)
 
         best: dict | None = None
 

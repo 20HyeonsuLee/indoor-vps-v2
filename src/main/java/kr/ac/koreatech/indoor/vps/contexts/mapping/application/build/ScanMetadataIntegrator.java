@@ -350,10 +350,7 @@ class ScanMetadataIntegrator {
             );
             pois.add(canonical);
 
-            findNearestCorridor(rtPos, corridorById).ifPresent(nearest -> {
-                edges.add(spurEdge(scanId, buildJobId, areaId, nodeId, nearest.getNodeId(),
-                        rtPos, nodeCenter(nearest)));
-            });
+            edgeSnapper.snapPoint(scanId, buildJobId, areaId, poiNode, edges, nodes, EdgeType.poi_spur);
         }
     }
 
@@ -405,10 +402,7 @@ class ScanMetadataIntegrator {
                 buildStop(connector, area, stopPoi, nodeId).ifPresent(stops::add);
             }
 
-            findNearestCorridor(rtPos, corridorById).ifPresent(nearest -> {
-                edges.add(spurEdge(scanId, buildJobId, areaId, nodeId, nearest.getNodeId(),
-                        rtPos, nodeCenter(nearest)));
-            });
+            edgeSnapper.snapPoint(scanId, buildJobId, areaId, connectorNode, edges, nodes, EdgeType.poi_spur);
         }
     }
 

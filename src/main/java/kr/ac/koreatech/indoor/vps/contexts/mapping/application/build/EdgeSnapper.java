@@ -56,8 +56,35 @@ class EdgeSnapper {
                 .toList();
 
         for (MapNodeEntity corridor : isolated) {
-            snapSingle(scanId, buildJobId, areaId, corridor, sequentialEdges, edges, nodes);
+            snapSingle(scanId, buildJobId, areaId, corridor, sequentialEdges, edges, nodes,
+                    EdgeType.rtabmap_link);
         }
+    }
+
+    /**
+     * Snap a single POI/connector node onto the nearest current sequential edge via
+     * perpendicular foot. Edits {@code edges} and {@code nodes} in-place. The newly
+     * added spur edge uses {@code spurType} (e.g. poi_spur for POIs).
+     *
+     * @return true if a spur was added, false if no sequential edge available.
+     */
+    boolean snapPoint(
+            UUID scanId,
+            UUID buildJobId,
+            UUID areaId,
+            MapNodeEntity node,
+            List<MapEdgeEntity> edges,
+            List<MapNodeEntity> nodes,
+            EdgeType spurType
+    ) {
+        List<MapEdgeEntity> sequentialEdges = edges.stream()
+                .filter(e -> e.getEdgeType() == EdgeType.rtabmap_link)
+                .toList();
+        if (sequentialEdges.isEmpty()) {
+            return false;
+        }
+        snapSingle(scanId, buildJobId, areaId, node, sequentialEdges, edges, nodes, spurType);
+        return true;
     }
 
     private Set<UUID> collectUsedNodeIds(List<MapEdgeEntity> sequentialEdges) {
@@ -76,7 +103,8 @@ class EdgeSnapper {
             MapNodeEntity corridor,
             List<MapEdgeEntity> sequentialEdges,
             List<MapEdgeEntity> edges,
-            List<MapNodeEntity> nodes
+            List<MapNodeEntity> nodes,
+            EdgeType spurType
     ) {
         Point3 c = centerOf(corridor);
         BestProjection best = findBestProjection(c, sequentialEdges, nodes);
@@ -89,15 +117,15 @@ class EdgeSnapper {
         MapEdgeEntity targetEdge = best.edge();
 
         if (t > EPSILON && t < 1.0 - EPSILON) {
-            splitAndConnect(scanId, buildJobId, areaId, corridor, c, foot, t, targetEdge, edges, nodes);
+            splitAndConnect(scanId, buildJobId, areaId, corridor, c, foot, t, targetEdge, edges, nodes, spurType);
         } else if (t <= EPSILON) {
             UUID endpointId = targetEdge.getFromNodeId();
             Point3 endpointPos = findNodePos(endpointId, nodes, sequentialEdges);
-            edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), endpointId, c, endpointPos));
+            edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), endpointId, c, endpointPos, spurType));
         } else {
             UUID endpointId = targetEdge.getToNodeId();
             Point3 endpointPos = findNodePos(endpointId, nodes, sequentialEdges);
-            edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), endpointId, c, endpointPos));
+            edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), endpointId, c, endpointPos, spurType));
         }
     }
 
@@ -162,7 +190,8 @@ class EdgeSnapper {
             double t,
             MapEdgeEntity targetEdge,
             List<MapEdgeEntity> edges,
-            List<MapNodeEntity> nodes
+            List<MapNodeEntity> nodes,
+            EdgeType spurType
     ) {
         UUID junctionId = deterministicUuid(
                 "junction:" + scanId + ":" + targetEdge.getEdgeId() + ":" + corridor.getNodeId());
@@ -185,7 +214,7 @@ class EdgeSnapper {
                 "split-b:" + targetEdge.getEdgeId() + ":" + corridor.getNodeId(),
                 junctionId, toId, findNodeCenter(toId, nodes),
                 foot, (1.0 - t) * totalLen));
-        edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), junctionId, c, foot));
+        edges.add(snapEdge(scanId, buildJobId, areaId, corridor.getNodeId(), junctionId, c, foot, spurType));
     }
 
     private Point3 findNodeCenter(UUID nodeId, List<MapNodeEntity> nodes) {
@@ -230,7 +259,8 @@ class EdgeSnapper {
             UUID fromId,
             UUID toId,
             Point3 fromPos,
-            Point3 toPos
+            Point3 toPos,
+            EdgeType spurType
     ) {
         Coordinate fc = new Coordinate(fromPos.x(), fromPos.y(), fromPos.z());
         Coordinate tc = new Coordinate(toPos.x(), toPos.y(), toPos.z());
@@ -241,7 +271,7 @@ class EdgeSnapper {
                 areaId,
                 fromId,
                 toId,
-                EdgeType.rtabmap_link,
+                spurType,
                 geometryFactory.createLineString(new Coordinate[]{fc, tc}),
                 fromPos.distanceTo(toPos)
         );

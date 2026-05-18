@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 public interface PoiCanonicalRepository extends JpaRepository<PoiCanonicalEntity, UUID> {
     List<PoiCanonicalEntity> findByBuilding_BuildingIdOrderByNameAscLabelAsc(UUID buildingId);
 
+    List<PoiCanonicalEntity> findByScanIdOrderByCanonicalId(UUID scanId);
+
     @Query("""
             select p from PoiCanonicalEntity p
             where p.building.buildingId = :buildingId

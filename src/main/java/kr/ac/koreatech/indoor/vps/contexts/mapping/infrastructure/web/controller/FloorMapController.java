@@ -45,6 +45,25 @@ public class FloorMapController {
                     .header(HttpHeaders.ETAG, etag)
                     .build();
         }
+        java.util.Map<UUID, kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.PoiCanonicalEntity> poiByRoute =
+                new java.util.HashMap<>();
+        for (var p : result.pois()) {
+            if (p.getRouteNodeId() != null) {
+                poiByRoute.put(p.getRouteNodeId(), p);
+            }
+        }
+        java.util.Map<UUID, kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.VerticalConnectorStopEntity> stopByRoute =
+                new java.util.HashMap<>();
+        for (var s : result.stopsInArea()) {
+            if (s.getRouteNodeId() != null) {
+                stopByRoute.put(s.getRouteNodeId(), s);
+            }
+        }
+        java.util.Map<UUID, kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.MapNodeEntity> nodeById =
+                new java.util.HashMap<>();
+        for (var n : result.nodes()) {
+            nodeById.put(n.getNodeId(), n);
+        }
         FloorMapResponse response = new FloorMapResponse(
                 result.floor().getFloorId(),
                 result.floor().getBuilding().getBuildingId(),
@@ -55,8 +74,12 @@ public class FloorMapController {
                 FloorMapCoordinateSystem.worldMeters(),
                 floorMapMapper.floorMapBounds(result.nodes()),
                 floorMapMapper.polygonFeatureCollection(result.polygons()),
-                result.nodes().stream().map(floorMapMapper::floorMapNode).toList(),
+                result.nodes().stream()
+                        .map(n -> floorMapMapper.floorMapNode(n, poiByRoute, stopByRoute))
+                        .toList(),
                 result.edges().stream().map(floorMapMapper::floorMapEdge).toList(),
+                floorMapMapper.destinations(result.pois(), stopByRoute),
+                floorMapMapper.connectors(result.stopsInArea(), result.stopsInBuilding(), nodeById),
                 result.etag()
         );
         return ResponseEntity.ok()
