@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "indoor.persistence", havingValue = "jpa", matchIfMissing = true)
 public class PointcloudFileResolver {
 
-    static final String CLOUD_FILE_NAME = "cloud.ply";
+    public static final String CLOUD_FILE_NAME = "cloud.ply";
 
     private final FloorScanRepository floorScanRepository;
     private final IndoorProperties properties;

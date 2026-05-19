@@ -4,7 +4,8 @@ public enum BridgeCommand {
     HEALTH("health"),
     LOCALIZE("localize"),
     MERGE_SCAN("merge_scan"),
-    BUILD_SUPERPOINT_INDEX("build_superpoint_index");
+    BUILD_SUPERPOINT_INDEX("build_superpoint_index"),
+    EXPORT_POINTCLOUD("export_pointcloud");
 
     private final String wireName;
 

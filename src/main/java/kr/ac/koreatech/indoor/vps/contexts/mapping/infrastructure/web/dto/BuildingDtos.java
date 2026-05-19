@@ -57,11 +57,4 @@ public final class BuildingDtos {
             List<VerticalPassageResponse> verticalPassages
     ) {
     }
-
-    public record NodeImagesRequest(
-            @NotNull Double x,
-            @NotNull Double y,
-            @NotNull Double z
-    ) {
-    }
 }

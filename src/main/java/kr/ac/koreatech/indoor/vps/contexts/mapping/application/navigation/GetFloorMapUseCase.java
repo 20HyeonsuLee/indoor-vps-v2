@@ -1,7 +1,6 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor.FloorQueryService;
@@ -43,16 +42,10 @@ public class GetFloorMapUseCase {
                 ? List.of() : graphQueryFacade.stopsForArea(areaIdResolved);
         // Sibling stops (다른 area에 있는 같은 connector의 stop들)을 함께 보낸다.
         List<VerticalConnectorStopEntity> stopsInBuilding = graphQueryFacade.stopsForBuilding(buildingIdResolved);
-        String etag = etagFor(floor.getFloorId(), scanId, buildJobId,
-                nodes.size(), edges.size(), polygons.size(), pois.size(), stopsInArea.size());
+        String etag = FloorMapEtag.compute(new FloorMapEtag.Input(
+                floor.getFloorId(), scanId, buildJobId, nodes, edges, polygons, pois, stopsInArea));
         return new FloorMapResult(floor, scanId, buildJobId, nodes, edges, polygons,
                 pois, stopsInArea, stopsInBuilding, etag);
-    }
-
-    private String etagFor(UUID floorId, UUID scanId, UUID buildJobId, int nodeCount,
-            int edgeCount, int polygonCount, int poiCount, int stopCount) {
-        return Integer.toHexString(Objects.hash(
-                floorId, scanId, buildJobId, nodeCount, edgeCount, polygonCount, poiCount, stopCount));
     }
 
     public record FloorMapResult(

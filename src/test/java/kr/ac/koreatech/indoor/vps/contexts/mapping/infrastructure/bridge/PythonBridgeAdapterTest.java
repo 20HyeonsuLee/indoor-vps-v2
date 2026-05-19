@@ -26,7 +26,7 @@ class PythonBridgeAdapterTest {
         JsonNode stdout = objectMapper.readTree(result.stdout());
         assertThat(stdout.path("ok").asBoolean()).isTrue();
         assertThat(stdout.path("commands").valueStream().map(JsonNode::asText).toList())
-                .containsExactly("health", "localize", "merge_scan", "build_superpoint_index");
+                .containsExactly("health", "localize", "merge_scan", "build_superpoint_index", "export_pointcloud");
         assertThat(stdout.path("mlDevice").asText()).isEqualTo("cpu");
     }
 
@@ -84,6 +84,22 @@ class PythonBridgeAdapterTest {
         BridgeResult contractOnly = call("build_superpoint_index", Map.of(
                 "scanId", "s1",
                 "dbPath", "/tmp/rtabmap.db",
+                "contractOnly", true
+        ));
+        assertThat(contractOnly.exitCode()).isZero();
+    }
+
+    @Test
+    void exportPointcloudValidatesSchema() throws Exception {
+        BridgeResult missing = call("export_pointcloud", Map.of("scanId", "s1"));
+        assertThat(missing.exitCode()).isEqualTo(2);
+        assertThat(objectMapper.readTree(missing.stderr()).path("error").path("code").asText())
+                .isEqualTo("BRIDGE_VALIDATION_ERROR");
+
+        BridgeResult contractOnly = call("export_pointcloud", Map.of(
+                "scanId", "s1",
+                "dbPath", "/tmp/rtabmap.db",
+                "outputPath", "/tmp/cloud.ply",
                 "contractOnly", true
         ));
         assertThat(contractOnly.exitCode()).isZero();

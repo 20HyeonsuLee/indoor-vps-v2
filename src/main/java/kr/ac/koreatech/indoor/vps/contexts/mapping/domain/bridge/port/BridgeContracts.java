@@ -77,4 +77,19 @@ public final class BridgeContracts {
             long elapsedMs
     ) {
     }
+
+    public record ExportPointcloudRequest(
+            String scanId,
+            String dbPath,
+            String outputPath
+    ) {
+    }
+
+    public record ExportPointcloudResponse(
+            String plyPath,
+            long pointCount,
+            long fileSize,
+            long elapsedMs
+    ) {
+    }
 }

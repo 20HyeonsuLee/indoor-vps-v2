@@ -14,6 +14,8 @@ import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.HealthBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeResponse;
@@ -70,6 +72,11 @@ public class PythonBridgeAdapter implements PythonBridge {
         return call(BridgeCommand.BUILD_SUPERPOINT_INDEX, request, BuildSuperpointIndexResponse.class);
     }
 
+    @Override
+    public ExportPointcloudResponse exportPointcloud(ExportPointcloudRequest request) {
+        return call(BridgeCommand.EXPORT_POINTCLOUD, request, ExportPointcloudResponse.class);
+    }
+
     private <T> T call(BridgeCommand command, Object payload, Class<T> responseType) {
         ensureEnabled();
         if (properties.getPython().getDaemon().isEnabled()) {
@@ -96,6 +103,11 @@ public class PythonBridgeAdapter implements PythonBridge {
             // multi-scan merge = rtabmap-reprocess -a (~30~90s) + post-merge reprocess (~30~60s)
             //                  + Stage 3 alignment (~1s) + scan_metadata merge (~5s).
             // 60s 기본값으론 부족, 15분 한도로 풀어놓음.
+            return properties.getPython().getMergeScanTimeoutSeconds();
+        }
+        if (BridgeCommand.EXPORT_POINTCLOUD.wireName().equals(command)) {
+            // rtabmap-export traverses every keyframe to assemble the cloud — large
+            // scans run several minutes. Piggy-back on the merge_scan budget.
             return properties.getPython().getMergeScanTimeoutSeconds();
         }
         return properties.getPython().getTimeoutSeconds();

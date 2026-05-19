@@ -6,7 +6,9 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.PointcloudFileResolver;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
@@ -111,6 +113,7 @@ public class BuildJobRunner {
             transactionTemplate.executeWithoutResult(
                     status -> graphPersister.persistSuccess(buildJobId, input.scanId(), input.dbPath(), reprocess, metadata)
             );
+            exportPointcloudQuietly(input.scanId(), input.dbPath());
         } catch (BuildInputException | RtabmapGraphReadException e) {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
         } catch (RtabmapReprocessException e) {
@@ -136,6 +139,26 @@ public class BuildJobRunner {
             );
         } catch (Exception e) {
             log.warn("[SuperPoint] index build failed for scan {} — localize will rebuild on demand: {}",
+                    scanId, e.getMessage());
+        }
+    }
+
+    private void exportPointcloudQuietly(UUID scanId, Path dbPath) {
+        if (!properties.getPython().isEnabled()) {
+            log.debug("[Pointcloud] python bridge disabled — skipping export for scan {}", scanId);
+            return;
+        }
+        Path output = dbPath.resolveSibling(PointcloudFileResolver.CLOUD_FILE_NAME);
+        try {
+            var response = pythonBridge.exportPointcloud(new ExportPointcloudRequest(
+                    scanId.toString(),
+                    dbPath.toAbsolutePath().toString(),
+                    output.toAbsolutePath().toString()
+            ));
+            log.info("[Pointcloud] exported scan {}: points={}, size={}, elapsed={}ms",
+                    scanId, response.pointCount(), response.fileSize(), response.elapsedMs());
+        } catch (Exception e) {
+            log.warn("[Pointcloud] export failed for scan {} — viewer will 404 until retry: {}",
                     scanId, e.getMessage());
         }
     }
