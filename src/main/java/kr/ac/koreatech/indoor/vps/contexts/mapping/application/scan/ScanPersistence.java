@@ -53,8 +53,9 @@ public class ScanPersistence {
     @Transactional
     public FloorScanEntity saveFloorScanActive(UUID floorId, FloorAreaEntity area, ScanIngestEntity scan,
             String fileName, long size, String status) {
-        floorScanRepository.deactivateForArea(area.getAreaId());
-        floorScanRepository.flush();
+        // 건물 좌표 drift가 없는 전제에서 새 스캔 업로드/머지 결과는 기존 active를
+        // 비활성화하지 않고 함께 active로 둠. BuildingRouteGraphProvider 가 active
+        // 스캔 set 전체의 노드를 union해 graph 구성.
         FloorScanEntity floorScan = floorScanRepository
                 .findByFloor_FloorIdAndScan_ScanId(floorId, scan.getScanId())
                 .orElseGet(() -> new FloorScanEntity(

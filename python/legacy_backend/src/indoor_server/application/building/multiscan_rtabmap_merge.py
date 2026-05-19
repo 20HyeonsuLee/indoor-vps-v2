@@ -275,6 +275,7 @@ def prepare_rtabmap_sources(
         if target.exists():
             target.unlink()
         shutil.copy2(source.db_path, target)
+        _verify_sqlite_integrity(target, scan_id=source.scan_id)
         labeled = inject_provenance_labels(target, scan_id=source.scan_id)
         prepared.append(
             PreparedRtabmapScan(
@@ -285,6 +286,34 @@ def prepare_rtabmap_sources(
             )
         )
     return prepared
+
+
+def _verify_sqlite_integrity(db_path: Path, *, scan_id: str) -> None:
+    """copy 직후 PRAGMA integrity_check — race(소스 reprocess가 아직 쓰는 중인데
+    복사가 그 순간을 잡으면 SQLite 헤더는 있지만 page truncated → 머지가
+    "database disk image is malformed" 로 폭주). 명확한 에러로 fail-fast.
+    """
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        raise MultiScanRtabmapMergeError(
+            f"source DB unopenable (scan_id={scan_id}, path={db_path}): {exc}"
+        ) from exc
+    try:
+        row = conn.execute("PRAGMA integrity_check").fetchone()
+    except sqlite3.DatabaseError as exc:
+        raise MultiScanRtabmapMergeError(
+            f"source DB malformed (scan_id={scan_id}): {exc}. "
+            f"청크의 reprocess가 끝나기 전에 머지가 시작됐을 가능성 — "
+            f"build_state=succeeded 확인 후 재시도."
+        ) from exc
+    finally:
+        conn.close()
+    status = (row[0] if row else "") or ""
+    if status.lower() != "ok":
+        raise MultiScanRtabmapMergeError(
+            f"source DB integrity_check failed (scan_id={scan_id}): {status}"
+        )
 
 
 def inject_provenance_labels(db_path: Path, *, scan_id: str) -> int:

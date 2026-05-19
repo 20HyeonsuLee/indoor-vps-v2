@@ -84,7 +84,8 @@ public class MergeScansUseCase {
     }
 
     private MergedScanResult activateSingleMerge(UUID floorId, FloorAreaEntity area, FloorScanEntity target) {
-        scanPersistence.deactivateForArea(area.getAreaId());
+        // 단일 청크 머지 = 그 청크를 MERGED 로 마크하고 active 로 유지. 다른 active
+        // 청크는 그대로 둠 (drift 없음 가정).
         FloorScanEntity refreshed = scanPersistence.findChunk(floorId, target.getFloorScanId())
                 .orElseThrow(() -> new ClientApiException(
                         HttpStatus.NOT_FOUND, "SCAN_CHUNK_NOT_FOUND", "scan chunk not found"));

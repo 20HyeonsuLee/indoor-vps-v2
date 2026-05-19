@@ -30,15 +30,18 @@ public class AsyncMergeExecutor {
     private final ScanMergeRunner mergeRunner;
     private final ScanPersistence scanPersistence;
     private final FloorAreaResolver floorAreaResolver;
+    private final ProcessFloorUseCase processFloorUseCase;
 
     public AsyncMergeExecutor(
             ScanMergeRunner mergeRunner,
             ScanPersistence scanPersistence,
-            FloorAreaResolver floorAreaResolver
+            FloorAreaResolver floorAreaResolver,
+            ProcessFloorUseCase processFloorUseCase
     ) {
         this.mergeRunner = mergeRunner;
         this.scanPersistence = scanPersistence;
         this.floorAreaResolver = floorAreaResolver;
+        this.processFloorUseCase = processFloorUseCase;
     }
 
     /**
@@ -53,8 +56,12 @@ public class AsyncMergeExecutor {
         try {
             MergeScanBridgeResponse merge = mergeRunner.run(cmd);
             persistMergedResult(cmd, floorId, areaId, merge);
-            log.info("[merge] done scan_id={} sha={} bytes={}",
-                    mergedScanId, merge.sha256(), merge.fileSize());
+            // 머지 결과를 즉시 그래프 빌드 큐에 enqueue — iOS가 별도 /process 호출
+            // 없이도 머지 후 그래프(map_node/map_edge/poi_canonical) 생성됨.
+            ProcessingStatusResult processed = processFloorUseCase.process(
+                    floorId, java.util.Optional.of(areaId));
+            log.info("[merge] done scan_id={} sha={} bytes={} build_job_id={}",
+                    mergedScanId, merge.sha256(), merge.fileSize(), processed.buildJobId());
         } catch (RuntimeException e) {
             log.error("[merge] failed scan_id={}: {}", mergedScanId, e.getMessage(), e);
         }
@@ -74,7 +81,9 @@ public class AsyncMergeExecutor {
                 Map.of("merge", merge.diagnostics() == null ? Map.of() : merge.diagnostics()),
                 area.getAreaId()
         ));
-        scanPersistence.deactivateForArea(area.getAreaId());
+        // 건물 drift 없는 전제 — 소스 청크들을 deactivate 하지 않고 머지 결과를
+        // 추가 active로 등록. graph union 시 중복 노드는 머지 시점에 cross-scan
+        // fuser가 이미 dedupe했고, 소스 청크 자체 노드는 graph에 그대로 표현됨.
         FloorScanEntity floorScan = new FloorScanEntity(
                 area,
                 scan,
