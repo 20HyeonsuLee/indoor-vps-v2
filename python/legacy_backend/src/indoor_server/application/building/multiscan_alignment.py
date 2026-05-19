@@ -48,10 +48,11 @@ class AlignmentResult:
 def align_and_patch_merged(
     merged_db: Path,
     *,
-    inlier_rot_deg: float = 10.0,
-    inlier_trans_m: float = 1.5,
-    ransac_iterations: int = 500,
+    inlier_rot_deg: float = 15.0,
+    inlier_trans_m: float = 3.0,
+    ransac_iterations: int = 2000,
     min_inliers: int = 3,
+    yaw_only: bool = False,
 ) -> AlignmentResult:
     """Align sub-map !=0 onto map_id=0 in `merged_db` (in-place patch)."""
     if not merged_db.exists():
@@ -84,6 +85,7 @@ def align_and_patch_merged(
                 rot_deg_tol=inlier_rot_deg,
                 trans_tol=inlier_trans_m,
                 iterations=ransac_iterations,
+                yaw_only=yaw_only,
             )
             if t_ab is None:
                 continue
@@ -155,15 +157,19 @@ def _ransac_se3_yaw_only(
     rot_deg_tol: float,
     trans_tol: float,
     iterations: int,
+    yaw_only: bool = False,
 ) -> tuple[np.ndarray | None, np.ndarray]:
-    """RANSAC: pick best T_AB candidate (yaw + xy-translation only)."""
+    """RANSAC over T_AB candidates. yaw_only=True면 z-rotation + xy-translation 만
+    유지(ARKit gravity-aligned 평면 가정), False면 full SE(3) (회전 6DoF + 평행이동
+    3DoF 모두 추정). full SE(3)이 inlier 더 많이 잡지만 outlier 영향에 민감.
+    """
     candidates = []
     for pose_a, link, pose_b in samples:
         # T_AB s.t. pose_B_world ≈ T_AB @ pose_B_local; from constraint:
         #   pose_A_world @ link = T_AB @ pose_B_local
         # => T_AB = pose_A_world @ link @ inv(pose_B_local)
         t_ab = pose_a @ link @ _invert_se3(pose_b)
-        candidates.append(_constrain_yaw_only(t_ab))
+        candidates.append(_constrain_yaw_only(t_ab) if yaw_only else t_ab)
     if not candidates:
         return None, np.array([], dtype=bool)
     arr = np.stack(candidates)  # (N, 4, 4)
@@ -171,7 +177,7 @@ def _ransac_se3_yaw_only(
     rng = np.random.default_rng(0)
     best_count = 0
     best_idx = None
-    iters = min(iterations, n * 4)
+    iters = min(iterations, n * 8)
     for _ in range(iters):
         pivot = arr[int(rng.integers(0, n))]
         diff = _pose_diff(arr, pivot)
@@ -184,8 +190,26 @@ def _ransac_se3_yaw_only(
         return None, np.array([], dtype=bool)
     # Refine by averaging inliers
     inliers = arr[best_idx]
-    avg = _average_se3_yaw_only(inliers)
+    avg = _average_se3_yaw_only(inliers) if yaw_only else _average_se3_full(inliers)
     return avg, best_idx
+
+
+def _average_se3_full(arr: np.ndarray) -> np.ndarray:
+    """평균 full SE(3): rotation은 SVD-projection으로 가장 가까운 SO(3),
+    translation은 평균. inlier들의 회전 차이가 크지 않다는 가정 (RANSAC이
+    이미 inlier 셋을 좁혀줌)."""
+    R_avg = arr[:, :3, :3].mean(axis=0)
+    # 가장 가까운 SO(3) projection (Frobenius 의미). U Σ V^T = R_avg → R = U V^T
+    U, _, Vt = np.linalg.svd(R_avg)
+    R = U @ Vt
+    if np.linalg.det(R) < 0:
+        Vt[2, :] *= -1
+        R = U @ Vt
+    t = arr[:, :3, 3].mean(axis=0)
+    out = np.eye(4, dtype=np.float64)
+    out[:3, :3] = R
+    out[:3, 3] = t
+    return out
 
 
 def _patch_submap_poses(

@@ -56,6 +56,7 @@ class ScanMetadataIntegrator {
     private final VerticalConnectorStopRepository verticalConnectorStopRepository;
     private final GeometryFactory geometryFactory = new GeometryFactory();
     private final EdgeSnapper edgeSnapper = new EdgeSnapper(geometryFactory);
+    private final CrossScanGraphFuser crossScanFuser = new CrossScanGraphFuser(edgeSnapper);
 
     ScanMetadataIntegrator(
             BuildingRepository buildingRepository,
@@ -90,6 +91,12 @@ class ScanMetadataIntegrator {
         buildBranchEdges(scanId, buildJobId, areaId, metadata.branchEdges(), corridorById, edges);
 
         edgeSnapper.snap(scanId, buildJobId, areaId, corridorById, edges, nodes);
+
+        // multi-scan 머지된 metadata는 각 sub-scan의 corridor sub-graph가 sequential edge
+        // 만으로 잇닿아 sub-graph 간 분리가 발생. 인접 청크가 시각적으로 겹치게 스캔되면
+        // 같은 물리 위치에 두 노드(또는 한 노드 + 다른 sub-graph의 엣지)가 존재하므로
+        // 노드 merge(≤3m) + 엣지 splice(≤2m)로 통합 그래프 구성.
+        crossScanFuser.fuse(scanId, buildJobId, areaId, nodes, edges, 3.0, 2.0);
 
         buildPolygons(scanId, buildJobId, metadata.branchMarks(), metadata.branchEdges(),
                 session, area, polygons);

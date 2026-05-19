@@ -87,6 +87,28 @@ class EdgeSnapper {
         return true;
     }
 
+    /**
+     * 후보 candidateEdges 안에서만 가장 가까운 엣지를 골라 splice. cross-scan
+     * fuser용 — 자기 자신을 포함하는 같은-sub-graph 엣지가 더 가깝다고 잡혀
+     * self-loop를 만드는 케이스 방지.
+     */
+    boolean snapPointToCandidates(
+            UUID scanId,
+            UUID buildJobId,
+            UUID areaId,
+            MapNodeEntity node,
+            List<MapEdgeEntity> candidateEdges,
+            List<MapEdgeEntity> edges,
+            List<MapNodeEntity> nodes,
+            EdgeType spurType
+    ) {
+        if (candidateEdges == null || candidateEdges.isEmpty()) {
+            return false;
+        }
+        snapSingle(scanId, buildJobId, areaId, node, candidateEdges, edges, nodes, spurType);
+        return true;
+    }
+
     private Set<UUID> collectUsedNodeIds(List<MapEdgeEntity> sequentialEdges) {
         Set<UUID> used = new HashSet<>();
         for (MapEdgeEntity e : sequentialEdges) {

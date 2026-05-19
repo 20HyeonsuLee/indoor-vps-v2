@@ -100,6 +100,15 @@ public class MapEdgeEntity {
         return toNodeId;
     }
 
+    /** Cross-scan graph fusion 시 follower → leader 노드 통합 후 edge 참조 재작성용. */
+    public void changeFromNodeId(UUID newFromNodeId) {
+        this.fromNodeId = newFromNodeId;
+    }
+
+    public void changeToNodeId(UUID newToNodeId) {
+        this.toNodeId = newToNodeId;
+    }
+
     public EdgeType getEdgeType() {
         return edgeType;
     }
