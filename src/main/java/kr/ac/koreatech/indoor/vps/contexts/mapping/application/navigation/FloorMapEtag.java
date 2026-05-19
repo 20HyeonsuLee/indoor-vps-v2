@@ -80,7 +80,7 @@ final class FloorMapEtag {
         if (p == null) {
             return 0;
         }
-        return Objects.hash(p.getX(), p.getY(), p.getZ());
+        return Objects.hash(p.getX(), p.getY(), p.getCoordinate().getZ());
     }
 
     private static int polygonHash(Polygon poly) {
