@@ -683,10 +683,11 @@ async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, objec
         "--voxel", "0.025",
         # ARKit sceneDepth 신뢰 범위 5m (≥6m는 노이즈 폭증).
         "--max_range", "5",
-        # 공중 떠다니는 isolated outlier 제거. noise_k 2 = default 5보다 약하게
-        # (5cm 반경에 이웃 2개 미만이면 제거). dense한 벽/바닥 표면은 유지.
+        # Isolated outlier 제거. noise_k=5는 rtabmap default. ARKit raw depth는
+        # view-간 일관성이 약해 noise_k=2(이전값)에선 ray-방향 줄무늬 outlier가
+        # 그대로 남았음 → 5cm 반경에 이웃 5개 미만이면 컷으로 강화 (point ~76% 컷).
         "--noise_radius", "0.05",
-        "--noise_k", "2",
+        "--noise_k", "5",
         # ARKit confidenceMap (Low=0/Med=50/High=100) 임계치. 클라가 depth_confidence를
         # 보내기 시작하면 신뢰도 50 미만 픽셀이 자동 컷되어 노이즈가 더 깎임.
         # depth_confidence 칼럼이 NULL인 기존 scan은 이 옵션이 무시되므로 BC 유지.

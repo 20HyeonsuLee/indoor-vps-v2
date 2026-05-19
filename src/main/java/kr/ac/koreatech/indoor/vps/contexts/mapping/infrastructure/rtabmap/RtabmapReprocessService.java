@@ -96,7 +96,11 @@ public class RtabmapReprocessService implements RtabmapReprocessor {
                 "--Kp/DetectorStrategy=1",
                 "--Vis/FeatureType=1",
                 "--Mem/ImagePreDecimation=1",
-                "--Mem/DepthAsMask=true",
+                // DepthAsMask=true(default)는 depth invalid 픽셀의 feature를 컷.
+                // 우리는 5m masking + ARKit raw로 valid depth가 8%대라 SURF 풀이 너무
+                // sparse → LC hypothesis는 잡혀도 transform RANSAC이 inlier 부족으로
+                // 다 reject(Total LC=0). false로 풀어 RGB 전체에서 feature 추출.
+                "--Mem/DepthAsMask=false",
                 inputDb.toString(),
                 outputDb.toString()
         );

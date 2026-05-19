@@ -15,11 +15,18 @@ import org.springframework.stereotype.Component;
 @Component
 class ScanDbWriter {
     private static final java.util.Base64.Decoder BASE64 = java.util.Base64.getDecoder();
+    // ARKit LiDAR 신뢰 거리 ~5m. 그 너머는 ML hallucination 비율이 높아 0으로 마킹.
+    private static final int MAX_DEPTH_RANGE_MM = 5000;
 
     boolean insertFrame(Connection connection, FramePayload frame) throws SQLException {
         if (existsNode(connection, frame.nodeId())) {
             return false;
         }
+        DepthRangeMasker.Result masked = DepthRangeMasker.mask(
+                decodeOptionalBlob(frame.depth()),
+                decodeOptionalBlob(frame.depthConfidence()),
+                MAX_DEPTH_RANGE_MM
+        );
         try (PreparedStatement nodeInsert = connection.prepareStatement("""
                 INSERT INTO Node(id, stamp, map_id, weight, label, time_enter, pose, ground_truth_pose, velocity, gps, env_sensors)
                 VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)
@@ -39,8 +46,8 @@ class ScanDbWriter {
 
             dataInsert.setInt(1, frame.nodeId());
             dataInsert.setBytes(2, decodeOptionalBlob(frame.image()));
-            dataInsert.setBytes(3, decodeOptionalBlob(frame.depth()));
-            dataInsert.setBytes(4, decodeOptionalBlob(frame.depthConfidence()));
+            dataInsert.setBytes(3, masked.depth());
+            dataInsert.setBytes(4, masked.confidence());
             dataInsert.setBytes(5, decodeOptionalBlob(frame.calibration()));
             dataInsert.setBytes(6, decodeOptionalBlob(frame.scan()));
             dataInsert.setBytes(7, decodeOptionalBlob(frame.scanInfo()));

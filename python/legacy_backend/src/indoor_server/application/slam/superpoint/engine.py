@@ -2,6 +2,7 @@
 import asyncio
 import io
 import logging
+import os
 
 import cv2
 import numpy as np
@@ -10,6 +11,11 @@ from PIL import Image, ImageOps
 from scipy.spatial.transform import Rotation
 
 logger = logging.getLogger(__name__)
+
+# RGBD(3D-3D) path는 ARKit LiDAR depth의 hallucination/복도 천공으로 인해
+# 짧은 view(가까운 KF)에 conf가 비대해지는 편향이 있어 기본 비활성.
+# 켜고 싶을 때만 SLAM_USE_RGBD=true.
+_USE_RGBD = os.environ.get("SLAM_USE_RGBD", "false").strip().lower() in ("1", "true", "yes")
 
 
 def _to_gray_float(img_bytes: bytes) -> np.ndarray | None:
@@ -214,7 +220,7 @@ class SuperPointEngine:
                     else np.array([float('nan')] * 3)
                 )
                 # --- RGBD path: 3D-3D rigid alignment when query depth available ---
-                if q_rtab_3d is not None:
+                if _USE_RGBD and q_rtab_3d is not None:
                     rgbd = self._rgbd_estimate(matches, q_rtab_3d, world3d)
                     if rgbd is None:
                         # Pre-check what made it fail
