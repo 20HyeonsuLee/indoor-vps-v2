@@ -679,10 +679,14 @@ async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, objec
         "--cloud",
         # decimation 1 = depth image 전체 픽셀 사용 (default 4는 1/4 down → 디테일 손실).
         "--decimation", "1",
-        # 1.5cm voxel. 0(완전 raw)은 너무 무겁고 0.03+ 은 형체가 뭉개짐.
-        "--voxel", "0.015",
+        # 2.5cm voxel. 점 수 너무 많지 않으면서 형체 유지.
+        "--voxel", "0.025",
         # ARKit sceneDepth 신뢰 범위 5m (≥6m는 노이즈 폭증).
         "--max_range", "5",
+        # 공중 떠다니는 isolated outlier 제거. noise_k 2 = default 5보다 약하게
+        # (5cm 반경에 이웃 2개 미만이면 제거). dense한 벽/바닥 표면은 유지.
+        "--noise_radius", "0.05",
+        "--noise_k", "2",
         "--output", "cloud",
         "--output_dir", str(work_dir),
         str(db_path),
