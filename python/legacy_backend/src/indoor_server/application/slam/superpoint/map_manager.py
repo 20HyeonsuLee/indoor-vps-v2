@@ -6,6 +6,7 @@ extracts SuperPoint features, and associates them with world-frame
 
 No service-layer files are modified — this is a standalone index.
 """
+import io
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,8 @@ TOP_K = 5
 
 # Bump when the build-time world3d derivation changes (e.g., ORB-mediated → depth-lift).
 # Caches with older version trigger rebuild on next load.
-CACHE_VERSION = 2
+# v3: PIL-based gray conversion (was cv2 BGR2GRAY) — caches built with v<3 invalidate.
+CACHE_VERSION = 3
 
 
 # ---------------------------------------------------------------------------
@@ -106,17 +109,25 @@ def _assign_world_3d(
 
 
 def _load_gray_float(conn: sqlite3.Connection, node_id: int) -> np.ndarray | None:
-    """Load grayscale float [0,1] image for a node from the Data table."""
+    """Load grayscale float [0,1] image for a node from the Data table.
+
+    쿼리 경로(_to_gray_float)와 동일하게 PIL을 사용해야 bit-exact 동일
+    이미지 → 동일 SP feature가 보장됨. cv2 BGR2GRAY는 PIL convert('L')과
+    반올림이 미세하게 달라(max 1/255) SP keypoint NMS가 다른 픽셀을 골라
+    self-localize에서 키포인트 매칭이 어긋남.
+    """
     row = conn.execute(
         "SELECT image FROM Data WHERE id = ?", (node_id,)
     ).fetchone()
     if not row or not row[0]:
         return None
-    arr = np.frombuffer(bytes(row[0]), dtype=np.uint8)
-    bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if bgr is None:
+    try:
+        pil = ImageOps.exif_transpose(Image.open(io.BytesIO(bytes(row[0]))))
+        if pil.mode != 'L':
+            pil = pil.convert('L')
+        return np.array(pil, dtype=np.float32) / 255.0
+    except Exception:
         return None
-    return cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
 
 def decode_depth_meters(depth_blob) -> np.ndarray | None:

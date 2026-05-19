@@ -81,10 +81,16 @@ class SuperPointEngine:
         from lightglue import LightGlue, SuperPoint
         from indoor_server.application.slam.superpoint.device import resolve_torch_device
 
+        # cuDNN을 결정적 모드로. inference 한정, 같은 input → bit-exact 같은 output.
+        # 인덱스 빌드 시점과 query 시점이 다른 process여도 SP feature 위치/descriptor
+        # 동일성 보장. 속도 ~10-30% 손실은 SP forward 한 번 수십 ms라 무시 수준.
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
         self._device = resolve_torch_device()
         self._extractor = SuperPoint(max_num_keypoints=1024).eval().to(self._device)
         self._matcher = LightGlue(features='superpoint').eval().to(self._device)
-        logger.info(f"[SuperPoint] Engine ready on {self._device}")
+        logger.info(f"[SuperPoint] Engine ready on {self._device} (cudnn.deterministic=True)")
 
     def extract_intrinsics_from_db(self, db_path: str) -> dict:
         from indoor_server.application.slam.rtabmap_intrinsics import RTABMapEngine
