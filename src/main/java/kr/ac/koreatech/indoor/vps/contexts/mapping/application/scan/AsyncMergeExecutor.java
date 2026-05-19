@@ -81,9 +81,9 @@ public class AsyncMergeExecutor {
                 Map.of("merge", merge.diagnostics() == null ? Map.of() : merge.diagnostics()),
                 area.getAreaId()
         ));
-        // 건물 drift 없는 전제 — 소스 청크들을 deactivate 하지 않고 머지 결과를
-        // 추가 active로 등록. graph union 시 중복 노드는 머지 시점에 cross-scan
-        // fuser가 이미 dedupe했고, 소스 청크 자체 노드는 graph에 그대로 표현됨.
+        // area 당 active scan 1개 강제 — 소스 청크들을 deactivate 하고 머지
+        // 결과만 active로 둠. 그래프는 단일 source(=머지 결과)에서 빌드.
+        scanPersistence.deactivateForArea(area.getAreaId());
         FloorScanEntity floorScan = new FloorScanEntity(
                 area,
                 scan,

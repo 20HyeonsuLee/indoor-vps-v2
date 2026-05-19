@@ -24,7 +24,7 @@ public class BuildingEntity {
     private Double longitude;
 
     @Column(nullable = false)
-    private String status = "DRAFT";
+    private String status = "ACTIVE";
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
