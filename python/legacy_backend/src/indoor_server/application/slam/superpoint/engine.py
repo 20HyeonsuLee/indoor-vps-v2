@@ -230,13 +230,16 @@ class SuperPointEngine:
                             f"→ rgbd_estimate=None, fallback to PnP"
                         )
                     if rgbd is not None:
-                        n_in, R_cw, t_cw = rgbd
-                        confidence = min(0.99, max(0.01, n_in / max(len(matches), 1)))
+                        n_in, R_cw, t_cw, n_pairs = rgbd
+                        # confidence = inliers / valid 3D-3D pairs. PnP 와 같은
+                        # denominator(매칭 후 3D 유효 쌍) 기준이라 직접 비교 가능.
+                        confidence = min(0.99, max(0.01, n_in / max(n_pairs, 1)))
                         qx, qy, qz, qw = _rotation_to_quat(R_cw)
                         logger.warning(
                             f"[RGBD-debug] WIN node={node_id} kf_centroid=("
                             f"{w_centroid[0]:.2f},{w_centroid[1]:.2f},{w_centroid[2]:.2f}) "
-                            f"→ pose t=({t_cw[0]:.2f},{t_cw[1]:.2f},{t_cw[2]:.2f}) inliers={n_in}"
+                            f"→ pose t=({t_cw[0]:.2f},{t_cw[1]:.2f},{t_cw[2]:.2f}) "
+                            f"inliers={n_in}/{n_pairs} conf={confidence:.2f}"
                         )
                         candidate = {
                             'num_matches': n_in,
@@ -248,7 +251,15 @@ class SuperPointEngine:
                                 'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
                             },
                         }
-                        if best is None or n_in > best['num_matches']:
+                        # RGBD 는 PnP 보다 항상 우선 — 단 confidence ≥ 0.3 일 때만.
+                        # 그 미만이면 unreliable → PnP fallback 허용.
+                        prev_is_rgbd = best is not None and best.get('method_used') == 'RGBD'
+                        rgbd_reliable = confidence >= 0.30
+                        if rgbd_reliable and (
+                            best is None
+                            or not prev_is_rgbd
+                            or n_in > best['num_matches']
+                        ):
                             best = candidate
                         continue
                     # RGBD failed (too few valid pairs or RANSAC underflow) → fall back to PnP.
@@ -313,6 +324,9 @@ class SuperPointEngine:
                         'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
                     },
                 }
+                # 이미 RGBD 가 best 면 PnP 후보는 무시 (RGBD 우선).
+                if best is not None and best.get('method_used') == 'RGBD':
+                    continue
                 if best is None or n_in > best['num_matches']:
                     best = candidate
 
@@ -331,9 +345,10 @@ class SuperPointEngine:
         q_rtab_3d: np.ndarray,         # (N, 3) query SP kp in rtab-cam frame, NaN if no depth
         world3d: np.ndarray,           # (M, 3) DB world 3D, NaN if no depth
     ):
-        """3D-3D Horn RANSAC. Returns (n_inliers, R_cam→world, t) or None.
+        """3D-3D Horn RANSAC. Returns (n_inliers, R_cam→world, t, n_valid_pairs) or None.
 
         Result R, t directly equals rtabmap-stored "T_world_camera" convention.
+        n_valid_pairs = 3D-3D pair 후보 수 (denominator for confidence).
         """
         pts_q, pts_w = [], []
         for qi, di in matches:
@@ -361,7 +376,8 @@ class SuperPointEngine:
         )
         # LiDAR depth(±10cm 노이즈) + SP feature 위치 오차 + world3d 누적 오차로
         # 실측 데이터에서 매칭당 3D 잔차가 30~50cm까지 흔함. 0.50m로 완화.
-        result = _ransac_3d3d(pts_q, pts_w, threshold=0.50, iterations=500, min_final_inliers=6)
+        # iterations 늘려 cross-image 노이지 pair set 에서도 inlier 셋 찾을 확률 향상.
+        result = _ransac_3d3d(pts_q, pts_w, threshold=0.50, iterations=2000, min_final_inliers=6)
         if result is None:
             logger.warning(
                 f"[RGBD-debug] _ransac_3d3d returned None — "
@@ -378,7 +394,7 @@ class SuperPointEngine:
                 f"[RGBD-debug] inlier ratio {ratio:.2%} < 10% (inliers={len(inliers)} / pairs={len(pts_q)})"
             )
             return None
-        return len(inliers), R, t
+        return len(inliers), R, t, len(pts_q)
 
     async def localize(
         self,
