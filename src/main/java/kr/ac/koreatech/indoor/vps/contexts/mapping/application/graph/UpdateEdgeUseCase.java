@@ -25,6 +25,11 @@ public class UpdateEdgeUseCase {
                 .orElseThrow(() -> new ClientApiException(
                         HttpStatus.NOT_FOUND, "EDGE_NOT_FOUND", "edge not found: " + edgeId));
         command.edgeType().ifPresent(edge::changeEdgeType);
+        if (command.clearWidth()) {
+            edge.changeWidthM(null);
+        } else {
+            command.widthM().ifPresent(edge::changeWidthM);
+        }
         return EdgeResult.from(edgeRepository.saveAndFlush(edge));
     }
 }

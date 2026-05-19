@@ -10,7 +10,8 @@ public record EdgeResult(
         UUID fromNodeId,
         UUID toNodeId,
         EdgeType edgeType,
-        double lengthM
+        double lengthM,
+        Double widthM
 ) {
     public static EdgeResult from(MapEdgeEntity edge) {
         return new EdgeResult(
@@ -19,7 +20,8 @@ public record EdgeResult(
                 edge.getFromNodeId(),
                 edge.getToNodeId(),
                 edge.getEdgeType(),
-                edge.getLengthM()
+                edge.getLengthM(),
+                edge.getWidthM()
         );
     }
 }

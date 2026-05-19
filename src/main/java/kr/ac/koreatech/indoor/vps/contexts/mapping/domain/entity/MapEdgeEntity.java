@@ -42,6 +42,9 @@ public class MapEdgeEntity {
     @Column(name = "length_m", nullable = false)
     private double lengthM;
 
+    @Column(name = "width_m")
+    private Double widthM;
+
     @Column(name = "area_id", nullable = false)
     private UUID areaId;
 
@@ -117,6 +120,10 @@ public class MapEdgeEntity {
         return lengthM;
     }
 
+    public Double getWidthM() {
+        return widthM;
+    }
+
     public void relocate(LineString newGeom, double newLengthM) {
         this.geom = newGeom;
         this.lengthM = newLengthM;
@@ -124,5 +131,9 @@ public class MapEdgeEntity {
 
     public void changeEdgeType(EdgeType newEdgeType) {
         this.edgeType = newEdgeType;
+    }
+
+    public void changeWidthM(Double newWidthM) {
+        this.widthM = newWidthM;
     }
 }

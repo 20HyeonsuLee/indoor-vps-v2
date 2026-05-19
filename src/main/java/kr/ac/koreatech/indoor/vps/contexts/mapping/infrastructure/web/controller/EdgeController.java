@@ -50,7 +50,12 @@ public class EdgeController {
 
     @PutMapping("/edges/{edgeId}")
     public EdgeResponse update(@PathVariable UUID edgeId, @RequestBody EdgeUpdateRequest body) {
-        return EdgeResponse.from(updateUseCase.update(edgeId, new UpdateEdgeCommand(Optional.ofNullable(body.edgeType()))));
+        UpdateEdgeCommand cmd = new UpdateEdgeCommand(
+                Optional.ofNullable(body.edgeType()),
+                Optional.ofNullable(body.widthM()),
+                Boolean.TRUE.equals(body.clearWidth())
+        );
+        return EdgeResponse.from(updateUseCase.update(edgeId, cmd));
     }
 
     @DeleteMapping("/edges/{edgeId}")

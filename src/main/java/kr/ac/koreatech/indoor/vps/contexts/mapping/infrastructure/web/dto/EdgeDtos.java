@@ -16,7 +16,11 @@ public final class EdgeDtos {
     ) {
     }
 
-    public record EdgeUpdateRequest(EdgeType edgeType) {
+    public record EdgeUpdateRequest(
+            EdgeType edgeType,
+            Double widthM,
+            Boolean clearWidth
+    ) {
     }
 
     public record EdgeResponse(
@@ -25,7 +29,8 @@ public final class EdgeDtos {
             UUID fromNodeId,
             UUID toNodeId,
             EdgeType edgeType,
-            double lengthM
+            double lengthM,
+            Double widthM
     ) {
         public static EdgeResponse from(EdgeResult result) {
             return new EdgeResponse(
@@ -34,7 +39,8 @@ public final class EdgeDtos {
                     result.fromNodeId(),
                     result.toNodeId(),
                     result.edgeType(),
-                    result.lengthM()
+                    result.lengthM(),
+                    result.widthM()
             );
         }
     }

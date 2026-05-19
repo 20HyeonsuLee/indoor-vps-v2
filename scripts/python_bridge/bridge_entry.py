@@ -677,7 +677,10 @@ async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, objec
         binary,
         "--output", "cloud",
         "--output_dir", str(work_dir),
-        "--cloud_voxel", "0.02",
+        # max_range default 4m is too tight for indoor scans → 20m covers most buildings.
+        "--max_range", "20",
+        # 1cm voxel is too dense and renders as a "blur"; 3cm balances detail vs payload.
+        "--cloud_voxel", "0.03",
         str(db_path),
     ]
     proc = await asyncio.create_subprocess_exec(
