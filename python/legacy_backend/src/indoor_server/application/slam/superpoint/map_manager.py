@@ -33,8 +33,12 @@ TOP_K = 5
 # v3: PIL-based gray conversion (was cv2 BGR2GRAY).
 # v4: RVL depth decoder enabled — DB depth blob ("DEPTHRVL") 가 빌드 시점에 실제로
 #     디코드되어 SP 키포인트 위치 직접 depth-lift 경로로 들어감 (이전엔 None 리턴 →
-#     ORB feature fallback). 캐시 v<4 invalidate.
-CACHE_VERSION = 4
+#     ORB feature fallback).
+# v5: Hybrid world3d — depth-direct(precise) 우선 + NaN 슬롯은 ORB-mediated로
+#     보충. v4는 depth-direct만 써서 4% coverage라 cross-image 쿼리에서 매칭 부족.
+# v6: ORB-mediated 경로에도 LiDAR sentinel(>8m) 필터 추가 — v5는 70m 등 극단치
+#     world3d가 들어가서 RGBD/PnP RANSAC이 망가짐.
+CACHE_VERSION = 6
 
 
 # ---------------------------------------------------------------------------
@@ -76,12 +80,20 @@ def _load_world_features(
             buf[node_id] = ([], [])
         buf[node_id][0].append([float(px), float(py)])
         T = transforms.get(node_id)
-        if T is not None and dx is not None and dy is not None and dz is not None:
-            local = np.array([dx, dy, dz], dtype=np.float64)
-            world = T[:, :3] @ local + T[:, 3]
-            buf[node_id][1].append(world.tolist())
-        else:
-            buf[node_id][1].append([float('nan')] * 3)
+        nan_point = [float('nan')] * 3
+        if T is None or dx is None or dy is None or dz is None:
+            buf[node_id][1].append(nan_point)
+            continue
+        local_dist = float(np.sqrt(dx*dx + dy*dy + dz*dz))
+        # iOS LiDAR sentinel(>8m) 또는 0 근처(보정 실패) → NaN.
+        # 이걸 거르지 않으면 ORB-mediated world3d가 70m 등 극단치 가지고
+        # RGBD/PnP RANSAC을 망가뜨림.
+        if local_dist <= 0.3 or local_dist > _LIDAR_MAX_VALID_M:
+            buf[node_id][1].append(nan_point)
+            continue
+        local = np.array([dx, dy, dz], dtype=np.float64)
+        world = T[:, :3] @ local + T[:, 3]
+        buf[node_id][1].append(world.tolist())
 
     return {
         nid: (
@@ -711,12 +723,15 @@ class SuperPointLoadedMap:
                         break
                     except ValueError:
                         continue
+            # rtabmap Feature 테이블의 ORB-mediated world3d 도 항상 로드.
+            # depth-direct가 NaN(LiDAR sentinel/hole)이면 SP kp 근처 ORB feature의
+            # world3d로 채움 → 단일 정밀 픽셀 우선 + sparse 영역에서도 매칭 가능 hybrid.
+            world_feats = _load_world_features(conn, transforms)
             if K_for_lift is None:
-                logger.warning("[SuperPoint] '%s': no calibration → fallback to ORB-derived world3d",
-                               self.map_id)
-                world_feats = _load_world_features(conn, transforms)
-            else:
-                world_feats = None  # depth-direct path
+                logger.warning(
+                    "[SuperPoint] '%s': no calibration → ORB-only world3d 경로",
+                    self.map_id,
+                )
 
             global_descs: list[torch.Tensor] = []
             from .global_descriptor import GlobalDescExtractor
@@ -744,7 +759,7 @@ class SuperPointLoadedMap:
                 sp_kps = cpu['keypoints'][0].numpy()   # (N, 2)
                 world3d: np.ndarray | None = None
 
-                # 1. Direct depth lift (preferred — uses LiDAR depth at SP kp locations)
+                # 1. Direct depth lift (preferred — exact SP kp 위치에서 LiDAR depth)
                 if K_for_lift is not None and node_id in transforms:
                     depth_m = _load_depth_meters(conn, node_id)
                     if depth_m is not None:
@@ -757,10 +772,17 @@ class SuperPointLoadedMap:
                         else:
                             depth_misses += 1
 
-                # 2. Fallback to ORB feature 8px-nearest path
-                if world3d is None and world_feats is not None and node_id in world_feats:
+                # 2. ORB-mediated 로 빈 슬롯 채움 — depth-direct가 NaN인 kp만
+                # rtabmap ORB feature의 world3d로 보충 (8px nearest). 정밀도는
+                # depth-direct 보다 떨어지지만 매칭 가능 영역이 넓어짐.
+                if world_feats is not None and node_id in world_feats:
                     r2d, w3d = world_feats[node_id]
-                    world3d = _assign_world_3d(sp_kps, r2d, w3d)
+                    orb_world3d = _assign_world_3d(sp_kps, r2d, w3d)
+                    if world3d is None:
+                        world3d = orb_world3d
+                    else:
+                        nan_mask = np.isnan(world3d).any(axis=1)
+                        world3d[nan_mask] = orb_world3d[nan_mask]
 
                 if world3d is None:
                     world3d = np.full((len(sp_kps), 3), float('nan'), dtype=np.float32)
