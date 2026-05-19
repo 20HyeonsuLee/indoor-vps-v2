@@ -675,12 +675,16 @@ async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, objec
     # rtabmap-export writes <output_dir>/<prefix>_cloud.ply (or <prefix>.ply).
     command = [
         binary,
+        # --cloud: ARKit/RGB-D depth는 Data.scan이 아닌 Data.depth에 들어가므로 cloud 모드.
+        "--cloud",
+        # decimation 1 = depth image 전체 픽셀 사용 (default 4는 1/4 down → 디테일 손실).
+        "--decimation", "1",
+        # 1.5cm voxel. 0(완전 raw)은 너무 무겁고 0.03+ 은 형체가 뭉개짐.
+        "--voxel", "0.015",
+        # ARKit sceneDepth 신뢰 범위 5m (≥6m는 노이즈 폭증).
+        "--max_range", "5",
         "--output", "cloud",
         "--output_dir", str(work_dir),
-        # max_range default 4m is too tight for indoor scans → 20m covers most buildings.
-        "--max_range", "20",
-        # 1cm voxel is too dense and renders as a "blur"; 3cm balances detail vs payload.
-        "--cloud_voxel", "0.03",
         str(db_path),
     ]
     proc = await asyncio.create_subprocess_exec(
