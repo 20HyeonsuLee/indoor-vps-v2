@@ -6,11 +6,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BatchDeleteBuildingsUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingCreateCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingQueryService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUpdateCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.BuildingUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.NodeImageResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.building.NodeImagesUseCase;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,10 +33,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class BuildingController {
     private final BuildingUseCase service;
     private final BuildingQueryService query;
+    private final BatchDeleteBuildingsUseCase batchDelete;
+    private final NodeImagesUseCase nodeImages;
 
-    public BuildingController(BuildingUseCase service, BuildingQueryService query) {
+    public BuildingController(
+            BuildingUseCase service,
+            BuildingQueryService query,
+            BatchDeleteBuildingsUseCase batchDelete,
+            NodeImagesUseCase nodeImages
+    ) {
         this.service = service;
         this.query = query;
+        this.batchDelete = batchDelete;
+        this.nodeImages = nodeImages;
     }
 
     @GetMapping("/buildings")
@@ -76,5 +88,19 @@ public class BuildingController {
             @Valid @RequestBody BuildingStatusRequest request
     ) {
         return service.patchStatus(buildingId, request.status());
+    }
+
+    @DeleteMapping("/buildings/batch")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteBuildings(@RequestBody List<UUID> buildingIds) {
+        batchDelete.deleteAll(buildingIds);
+    }
+
+    @PostMapping("/buildings/{buildingId}/node-images")
+    public List<NodeImageResult> nearbyNodeImages(
+            @PathVariable UUID buildingId,
+            @Valid @RequestBody NodeImagesRequest body
+    ) {
+        return nodeImages.findNearby(buildingId, body.x(), body.y(), body.z());
     }
 }

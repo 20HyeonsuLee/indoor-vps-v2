@@ -106,4 +106,33 @@ public class MapNodeEntity {
         this.nodeType = nodeType;
         this.sourceRef = sourceRef;
     }
+
+    public void relocate(Point newGeom) {
+        this.geom = newGeom;
+    }
+
+    public void relabel(String newLabel) {
+        this.label = newLabel;
+    }
+
+    public void changeNodeType(NodeType newType) {
+        this.nodeType = newType;
+    }
+
+    public void markManual() {
+        Map<String, Object> next = new java.util.LinkedHashMap<>();
+        if (this.sourceRef != null) {
+            next.putAll(this.sourceRef);
+        }
+        next.put("origin", "manual_edit");
+        this.sourceRef = next;
+    }
+
+    public boolean isManual() {
+        if (this.sourceRef == null) {
+            return false;
+        }
+        Object origin = this.sourceRef.get("origin");
+        return "manual_edit".equals(origin);
+    }
 }

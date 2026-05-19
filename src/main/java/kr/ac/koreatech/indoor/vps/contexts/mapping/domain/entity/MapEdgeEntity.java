@@ -116,4 +116,13 @@ public class MapEdgeEntity {
     public double getLengthM() {
         return lengthM;
     }
+
+    public void relocate(LineString newGeom, double newLengthM) {
+        this.geom = newGeom;
+        this.lengthM = newLengthM;
+    }
+
+    public void changeEdgeType(EdgeType newEdgeType) {
+        this.edgeType = newEdgeType;
+    }
 }

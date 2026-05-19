@@ -84,4 +84,20 @@ public class VerticalConnectorEntity {
     public Instant getCreatedAt() {
         return createdAt;
     }
+
+    public void rename(String newName) {
+        this.name = newName;
+    }
+
+    public void changeType(String newConnectorType) {
+        this.connectorType = newConnectorType;
+    }
+
+    public void changeKey(String newConnectorKey) {
+        this.connectorKey = newConnectorKey;
+    }
+
+    public void setMock(boolean newMock) {
+        this.mock = newMock;
+    }
 }
