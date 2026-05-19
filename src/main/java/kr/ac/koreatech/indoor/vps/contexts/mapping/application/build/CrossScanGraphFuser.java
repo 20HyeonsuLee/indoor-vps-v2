@@ -61,7 +61,7 @@ public class CrossScanGraphFuser {
             if (uf.componentCount() < 2) {
                 break;
             }
-            Best best = findBestCrossComponent(corridors, edges, uf, mergeRadius, spliceRadius);
+            Best best = findBestCrossComponent(nodes, corridors, edges, uf, mergeRadius, spliceRadius);
             if (best == null) {
                 break;
             }
@@ -117,6 +117,7 @@ public class CrossScanGraphFuser {
     }
 
     private Best findBestCrossComponent(
+            List<MapNodeEntity> allNodes,
             List<MapNodeEntity> corridors,
             List<MapEdgeEntity> edges,
             UnionFind uf,
@@ -154,6 +155,13 @@ public class CrossScanGraphFuser {
         // 내부에 있고(t ∈ (ε, 1-ε)), perpendicular 거리 ≤ spliceRadius이면 splice.
         // component 검사는 제외 — 같은 component 안에서도 엣지 위에 떨어진
         // 노드는 splice (T-junction 형성).
+        // endpoint geometry lookup은 전체 nodes 기준 — junction/POI 가 endpoint 인
+        // rtabmap_link 도 splice 대상이어야 함 (corridor 만 보면 node merge 이후
+        // junction 으로 변환된 엣지들이 누락돼 components 가 영구 분리됨).
+        Map<UUID, Point3> nodePos = new HashMap<>();
+        for (MapNodeEntity n : allNodes) {
+            nodePos.put(n.getNodeId(), centerOf(n));
+        }
         Best bestSplice = null;
         for (MapNodeEntity n : corridors) {
             Point3 c = centerOf(n);
@@ -164,11 +172,9 @@ public class CrossScanGraphFuser {
                 // 자기 자신이 endpoint인 엣지는 skip — splice 의미 없고 self-loop 위험.
                 if (e.getFromNodeId().equals(n.getNodeId())
                         || e.getToNodeId().equals(n.getNodeId())) continue;
-                Integer fi = indexOfNodeId(corridors, e.getFromNodeId());
-                Integer ti = indexOfNodeId(corridors, e.getToNodeId());
-                if (fi == null || ti == null) continue;
-                Point3 p = centerOf(corridors.get(fi));
-                Point3 q = centerOf(corridors.get(ti));
+                Point3 p = nodePos.get(e.getFromNodeId());
+                Point3 q = nodePos.get(e.getToNodeId());
+                if (p == null || q == null) continue;
                 // segment 내부에 foot 있는 경우만 (endpoint extrapolation 제외).
                 if (!footWithinSegment(c, p, q)) continue;
                 double d = perpendicularDistance(c, p, q);
