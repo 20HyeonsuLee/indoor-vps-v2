@@ -6,6 +6,7 @@ extracts SuperPoint features, and associates them with world-frame
 
 No service-layer files are modified — this is a standalone index.
 """
+import ctypes
 import io
 import json
 import logging
@@ -29,8 +30,11 @@ TOP_K = 5
 
 # Bump when the build-time world3d derivation changes (e.g., ORB-mediated → depth-lift).
 # Caches with older version trigger rebuild on next load.
-# v3: PIL-based gray conversion (was cv2 BGR2GRAY) — caches built with v<3 invalidate.
-CACHE_VERSION = 3
+# v3: PIL-based gray conversion (was cv2 BGR2GRAY).
+# v4: RVL depth decoder enabled — DB depth blob ("DEPTHRVL") 가 빌드 시점에 실제로
+#     디코드되어 SP 키포인트 위치 직접 depth-lift 경로로 들어감 (이전엔 None 리턴 →
+#     ORB feature fallback). 캐시 v<4 invalidate.
+CACHE_VERSION = 4
 
 
 # ---------------------------------------------------------------------------
@@ -130,40 +134,162 @@ def _load_gray_float(conn: sqlite3.Connection, node_id: int) -> np.ndarray | Non
         return None
 
 
+# iOS LiDAR 실용 최대치(~6m) 보다 큰 값은 ARKit 의 "no data" sentinel — RVL uint16 mm으로
+# 인코딩하면 30-65m 영역이 됨. 실제 depth 측정이 아니므로 NaN 처리.
+_LIDAR_MAX_VALID_M = 8.0
+
+# librtabmap_core.so 의 rtabmap::RvlCodec::DecompressRVL 을 ctypes 로 호출 (mangled name).
+# Pure-Python 디코더보다 ~50x 빠르고 C++ 구현과 bit-exact 동일.
+_RVL_LIB: ctypes.CDLL | None = None
+_RVL_CODEC_BUF: ctypes.Array | None = None
+
+
+def _rvl_lib() -> ctypes.CDLL | None:
+    global _RVL_LIB, _RVL_CODEC_BUF
+    if _RVL_LIB is not None:
+        return _RVL_LIB
+    try:
+        lib = ctypes.CDLL('/usr/local/lib/librtabmap_core.so')
+    except OSError as exc:
+        logger.warning("[depth] librtabmap_core.so 로드 실패 (%s) — Python RVL 폴백 사용", exc)
+        return None
+    decompress = lib._ZN7rtabmap8RvlCodec13DecompressRVLEPKhPti
+    decompress.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int]
+    decompress.restype = None
+    ctor = lib._ZN7rtabmap8RvlCodecC1Ev
+    ctor.argtypes = [ctypes.c_void_p]
+    ctor.restype = None
+    buf = (ctypes.c_uint8 * 64)()
+    ctor(ctypes.cast(buf, ctypes.c_void_p))
+    _RVL_LIB = lib
+    _RVL_CODEC_BUF = buf
+    return _RVL_LIB
+
+
+def _decompress_rvl_py(payload: bytes, num_pixels: int) -> np.ndarray:
+    """Pure-Python fallback (librtabmap 미설치 환경용). uint16 mm 출력."""
+    n_words = len(payload) // 4
+    words = np.frombuffer(payload[:n_words * 4], dtype=np.uint32)
+    out = np.zeros(num_pixels, dtype=np.uint16)
+    word_idx = 0
+    word = 0
+    nibbles_left = 0
+
+    def read_nibble():
+        nonlocal word_idx, word, nibbles_left
+        if nibbles_left == 0:
+            word = int(words[word_idx])
+            word_idx += 1
+            nibbles_left = 8
+        n = (word >> 28) & 0xF
+        word = (word << 4) & 0xFFFFFFFF
+        nibbles_left -= 1
+        return n
+
+    def decode_vle():
+        value = 0
+        bits = 0
+        while True:
+            n = read_nibble()
+            value |= (n & 0x7) << bits
+            bits += 3
+            if not (n & 0x8):
+                return value
+            if bits > 30:
+                return value
+
+    previous = 0
+    i = 0
+    while i < num_pixels:
+        zeros = decode_vle()
+        i = min(i + zeros, num_pixels)
+        if i >= num_pixels:
+            break
+        nonzeros = decode_vle()
+        for _ in range(nonzeros):
+            if i >= num_pixels:
+                break
+            positive = decode_vle()
+            delta = (positive >> 1) ^ -(positive & 1)
+            previous = (previous + delta) & 0xFFFF
+            out[i] = previous
+            i += 1
+    return out
+
+
+def _decode_rvl_depth(raw: bytes) -> np.ndarray | None:
+    """rtabmap "DEPTHRVL" depth blob → (H, W) float32 m. invalid sentinel은 NaN.
+
+    Layout: "DEPTHRVL"(8) + width(4 LE uint32) + height(4 LE uint32) + RVL payload(uint16 mm).
+    """
+    if len(raw) < 16 or raw[:8] != b'DEPTHRVL':
+        return None
+    w = int.from_bytes(raw[8:12], 'little')
+    h = int.from_bytes(raw[12:16], 'little')
+    if w <= 0 or h <= 0 or w * h > 10_000_000:
+        return None
+    payload = raw[16:]
+    num_pixels = w * h
+    lib = _rvl_lib()
+    if lib is not None:
+        out = (ctypes.c_uint16 * num_pixels)()
+        decompress = lib._ZN7rtabmap8RvlCodec13DecompressRVLEPKhPti
+        decompress(
+            ctypes.cast(_RVL_CODEC_BUF, ctypes.c_void_p),
+            payload,
+            ctypes.cast(out, ctypes.c_void_p),
+            num_pixels,
+        )
+        arr_mm = np.frombuffer(out, dtype=np.uint16).reshape(h, w).copy()
+    else:
+        arr_mm = _decompress_rvl_py(payload, num_pixels).reshape(h, w)
+    depth_m = arr_mm.astype(np.float32) / 1000.0
+    # ARKit 의 invalid pixel sentinel 제거 — uint16 한계 근처 또는 LiDAR 실용 범위 밖.
+    depth_m[(depth_m <= 0) | (depth_m > _LIDAR_MAX_VALID_M)] = np.nan
+    return depth_m
+
+
 def decode_depth_meters(depth_blob) -> np.ndarray | None:
-    """Depth blob → (H, W) float32 depth in meters.
+    """Depth blob → (H, W) float32 depth in meters (invalid 픽셀은 NaN).
 
     지원 포맷:
-      1) PNG 인코딩된 RGBA 8-bit — 4 bytes를 float32로 재해석 (iOS LiDAR 일반 스캔 저장 형식).
-      2) PNG 16-bit single-channel — mm 단위 가정, 1000으로 나눠 m.
-      3) PNG 32-bit float single-channel — 그대로 m.
-      4) **Raw float32 buffer** — 256×192 또는 192×256 등 알려진 iOS LiDAR 해상도 매치 시 직접
-         np.frombuffer로 reshape. localize 요청에서 클라가 PNG 인코딩 없이 raw buffer를 보내는
-         경우 대응.
+      1) rtabmap "DEPTHRVL" — RVL 압축된 uint16 mm (DB 저장 형식).
+      2) PNG 인코딩된 RGBA 8-bit — 4 bytes를 float32로 재해석 (이전 iOS 저장 형식 호환).
+      3) PNG 16-bit single-channel — mm 단위 가정.
+      4) PNG 32-bit float single-channel — m 단위.
+      5) Raw float32 buffer — 알려진 iOS LiDAR 해상도 매치 시 직접 reshape (쿼리 경로).
     """
     if not depth_blob:
         return None
     raw = bytes(depth_blob)
-    # (4) Raw float32 buffer fast path — known iOS LiDAR resolutions.
+    # (1) RVL 빠른 경로 — DB 저장 depth.
+    if len(raw) >= 8 and raw[:8] == b'DEPTHRVL':
+        return _decode_rvl_depth(raw)
+    # (5) Raw float32 buffer — known iOS LiDAR resolutions.
     n_f32 = len(raw) // 4
     if len(raw) % 4 == 0:
         for h, w in ((192, 256), (256, 192), (180, 240), (240, 180)):
             if h * w == n_f32:
                 arr = np.frombuffer(raw, dtype=np.float32).reshape(h, w).copy()
                 if np.isfinite(arr).any():
+                    # invalid sentinel 제거 (NaN/Inf는 이미 isnan으로 잡힘, range만 추가).
+                    arr[(arr <= 0) | (arr > _LIDAR_MAX_VALID_M)] = np.nan
                     return arr
-    # (1~3) PNG-encoded variants.
+    # (2~4) PNG-encoded variants.
     arr_u8 = np.frombuffer(raw, dtype=np.uint8)
     img = cv2.imdecode(arr_u8, cv2.IMREAD_UNCHANGED)
     if img is None:
         return None
     if img.ndim == 3 and img.shape[2] == 4 and img.dtype == np.uint8:
-        return np.ascontiguousarray(img).view(np.float32).reshape(img.shape[:2])
-    if img.dtype == np.uint16:
-        return img.astype(np.float32) / 1000.0
-    if img.dtype == np.float32 and img.ndim == 2:
-        return img
-    return None
+        depth_m = np.ascontiguousarray(img).view(np.float32).reshape(img.shape[:2]).copy()
+    elif img.dtype == np.uint16:
+        depth_m = img.astype(np.float32) / 1000.0
+    elif img.dtype == np.float32 and img.ndim == 2:
+        depth_m = img.copy()
+    else:
+        return None
+    depth_m[(depth_m <= 0) | (depth_m > _LIDAR_MAX_VALID_M)] = np.nan
+    return depth_m
 
 
 def _load_depth_meters(conn: sqlite3.Connection, node_id: int) -> np.ndarray | None:
