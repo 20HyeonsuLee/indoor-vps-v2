@@ -687,6 +687,10 @@ async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, objec
         # (5cm 반경에 이웃 2개 미만이면 제거). dense한 벽/바닥 표면은 유지.
         "--noise_radius", "0.05",
         "--noise_k", "2",
+        # ARKit confidenceMap (Low=0/Med=50/High=100) 임계치. 클라가 depth_confidence를
+        # 보내기 시작하면 신뢰도 50 미만 픽셀이 자동 컷되어 노이즈가 더 깎임.
+        # depth_confidence 칼럼이 NULL인 기존 scan은 이 옵션이 무시되므로 BC 유지.
+        "--depth_confidence", "50",
         "--output", "cloud",
         "--output_dir", str(work_dir),
         str(db_path),

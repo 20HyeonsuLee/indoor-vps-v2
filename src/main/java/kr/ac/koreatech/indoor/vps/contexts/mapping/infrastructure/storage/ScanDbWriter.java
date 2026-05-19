@@ -25,8 +25,8 @@ class ScanDbWriter {
                 VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)
                 """);
              PreparedStatement dataInsert = connection.prepareStatement("""
-                     INSERT OR REPLACE INTO Data(id, image, depth, calibration, scan, scan_info, user_data)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)
+                     INSERT OR REPLACE INTO Data(id, image, depth, depth_confidence, calibration, scan, scan_info, user_data)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                      """)) {
             nodeInsert.setInt(1, frame.nodeId());
             nodeInsert.setDouble(2, frame.stamp());
@@ -40,10 +40,11 @@ class ScanDbWriter {
             dataInsert.setInt(1, frame.nodeId());
             dataInsert.setBytes(2, decodeOptionalBlob(frame.image()));
             dataInsert.setBytes(3, decodeOptionalBlob(frame.depth()));
-            dataInsert.setBytes(4, decodeOptionalBlob(frame.calibration()));
-            dataInsert.setBytes(5, decodeOptionalBlob(frame.scan()));
-            dataInsert.setBytes(6, decodeOptionalBlob(frame.scanInfo()));
-            dataInsert.setBytes(7, decodeOptionalBlob(frame.userData()));
+            dataInsert.setBytes(4, decodeOptionalBlob(frame.depthConfidence()));
+            dataInsert.setBytes(5, decodeOptionalBlob(frame.calibration()));
+            dataInsert.setBytes(6, decodeOptionalBlob(frame.scan()));
+            dataInsert.setBytes(7, decodeOptionalBlob(frame.scanInfo()));
+            dataInsert.setBytes(8, decodeOptionalBlob(frame.userData()));
             dataInsert.executeUpdate();
             return true;
         }

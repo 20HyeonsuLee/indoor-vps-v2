@@ -30,6 +30,7 @@ public interface StreamingScanStorage {
             Integer mapId,
             Integer weight,
             String depth,
+            String depthConfidence,
             String scan,
             String scanInfo,
             String label,
