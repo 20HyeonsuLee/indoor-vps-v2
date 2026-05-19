@@ -29,7 +29,7 @@ public class PoiUseCase {
 
     public List<PoiResult> listPois(UUID buildingId) {
         buildingQuery.requireBuilding(buildingId);
-        return poiCanonicalRepository.findByBuilding_BuildingIdOrderByNameAscLabelAsc(buildingId).stream()
+        return poiCanonicalRepository.findActiveByBuilding(buildingId).stream()
                 .map(this::toPoiResult)
                 .toList();
     }
@@ -39,7 +39,7 @@ public class PoiUseCase {
         if (query == null || query.isBlank()) {
             return listPois(buildingId);
         }
-        return poiCanonicalRepository.search(buildingId, "%" + query.toLowerCase() + "%").stream()
+        return poiCanonicalRepository.searchActive(buildingId, "%" + query.toLowerCase() + "%").stream()
                 .map(this::toPoiResult)
                 .toList();
     }

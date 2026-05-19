@@ -21,7 +21,7 @@ public class PoiRouteTargetResolver {
         if (destinationName == null || destinationName.isBlank()) {
             return Optional.empty();
         }
-        return poiCanonicalRepository.search(buildingId, "%" + destinationName.toLowerCase() + "%").stream()
+        return poiCanonicalRepository.searchActive(buildingId, "%" + destinationName.toLowerCase() + "%").stream()
                 .map(this::toTarget)
                 .findFirst();
     }
