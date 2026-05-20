@@ -29,6 +29,12 @@ public class PointcloudController {
         return respond(resolver.resolveForFloor(floorId), "floor-" + floorId + ".ply");
     }
 
+    /** B(rtabmap-native) variant 시각화용. A 응답에는 영향 없음. */
+    @GetMapping("/floors/{floorId}/pointcloud/v2")
+    public ResponseEntity<Resource> floorPointcloudV2(@PathVariable UUID floorId) {
+        return respond(resolver.resolveForFloorV2(floorId), "floor-" + floorId + "-v2.ply");
+    }
+
     @GetMapping("/areas/{areaId}/pointcloud")
     public ResponseEntity<Resource> areaPointcloud(@PathVariable UUID areaId) {
         return respond(resolver.resolveForArea(areaId), "area-" + areaId + ".ply");

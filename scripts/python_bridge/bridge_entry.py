@@ -239,6 +239,11 @@ async def localize_async(payload: dict[str, object]) -> dict[str, object]:
         # Use areaId as the SuperPoint cache key so two areas under the same
         # floorId don't share/overwrite each other's index.
         cache_key = str(floor_map.get("areaId") or floor_map.get("floorId") or payload["buildingId"])
+        # A/B variant 분리: v2(rtabmap-native) artefact는 <scan_dir>/v2/ 하위. 같은 areaId
+        # 라도 db_path가 다르면 cache_key를 다르게 둬 SuperPointMapManager가 둘을 동시에
+        # 캐시 유지 (안 그러면 A↔B 호출 사이 매번 reload + race).
+        if "/v2/" in str(floor_map.get("filePath", "")):
+            cache_key = f"{cache_key}_v2"
         try:
             result = await slam_engine.localize(
                 cache_key,
@@ -677,10 +682,14 @@ async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, objec
         binary,
         # --cloud: ARKit/RGB-D depth는 Data.scan이 아닌 Data.depth에 들어가므로 cloud 모드.
         "--cloud",
+        # opt=2: reprocess + detectMoreLoopClosures가 Admin.opt_poses에 저장한
+        # graph-optimized pose 활용 (default 0은 재최적화 시도. 우리는 이미
+        # optimization 완료된 결과 사용해 일관성 유지).
+        "--opt", "2",
         # decimation 1 = depth image 전체 픽셀 사용 (default 4는 1/4 down → 디테일 손실).
         "--decimation", "1",
-        # 2.5cm voxel. 점 수 너무 많지 않으면서 형체 유지.
-        "--voxel", "0.025",
+        # 10cm voxel. 시각화 부담 줄이는 우선.
+        "--voxel", "0.10",
         # ARKit sceneDepth 신뢰 범위 5m (≥6m는 노이즈 폭증).
         "--max_range", "5",
         # Isolated outlier 제거. noise_k=5는 rtabmap default. ARKit raw depth는

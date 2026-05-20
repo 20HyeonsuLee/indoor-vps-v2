@@ -9,31 +9,42 @@ import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand.ImagePayload;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.SLAMLocalizeResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.SlamLocalizer;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.FloorMapBridgeRef;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-@Service
-public class SlamLocalizationService {
+/**
+ * SuperPoint+LightGlue 기반 측위. Bean 등록은 {@link kr.ac.koreatech.indoor.vps.config.SlamLocalizerConfig}
+ * 에서 primary/shadow 각각 한 instance씩 명시. variant=SHADOW면 같은 buildingId에 대해
+ * {@link LocalizationMapProvider#activeFloorMapsV2}로 rtabmap-native artefact (<scan_dir>/v2/)를
+ * 가리키는 FloorMapBridgeRef를 사용. 그 외 로직은 두 variant 공통.
+ */
+public class SlamLocalizationService implements SlamLocalizer {
+    public enum Variant { PRIMARY, SHADOW }
+
     private final IndoorProperties properties;
     private final PythonBridge bridge;
     private final LocalizationMapProvider mapProvider;
+    private final Variant variant;
 
     public SlamLocalizationService(
             IndoorProperties properties,
             PythonBridge bridge,
-            LocalizationMapProvider mapProvider
+            LocalizationMapProvider mapProvider,
+            Variant variant
     ) {
         this.properties = properties;
         this.bridge = bridge;
         this.mapProvider = mapProvider;
+        this.variant = variant;
     }
 
+    @Override
     @Transactional(readOnly = true)
     public SLAMLocalizeResult localize(LocalizeCommand command) {
         if (command.images() == null || command.images().isEmpty()) {
@@ -45,9 +56,12 @@ public class SlamLocalizationService {
         }
         bridge.ensureEnabled();
 
-        List<FloorMapBridgeRef> floorMaps = mapProvider.activeFloorMaps(resolvedBuildingId);
+        List<FloorMapBridgeRef> floorMaps = variant == Variant.SHADOW
+                ? mapProvider.activeFloorMapsV2(resolvedBuildingId)
+                : mapProvider.activeFloorMaps(resolvedBuildingId);
         if (floorMaps.isEmpty()) {
-            throw new ClientApiException(HttpStatus.NOT_FOUND, "MAP_NOT_FOUND", "No maps found for building " + resolvedBuildingId);
+            throw new ClientApiException(HttpStatus.NOT_FOUND, "MAP_NOT_FOUND",
+                    "No maps found for building " + resolvedBuildingId + " (variant=" + variant + ")");
         }
         if (command.floorId() != null && !command.floorId().isBlank()) {
             floorMaps = floorMaps.stream()
@@ -68,7 +82,13 @@ public class SlamLocalizationService {
                 ImagePayload image = command.images().get(i);
                 validateImage(image, i);
                 Path file = tempDir.resolve("%02d-%s".formatted(i, safeName(image.originalFilename())));
-                Files.write(file, image.content());
+                // SHADOW variant: 클라가 보내는 query는 항상 landscape인데 v2(rtabmap iOS native)
+                // keyframe은 portrait. SuperPoint 매칭이 0에 가깝게 떨어지므로 query를 90° CW
+                // 회전해 portrait로 맞춤. PRIMARY는 절대 손대지 않음 (회귀 위험 0).
+                byte[] payload = variant == Variant.SHADOW
+                        ? ImageRotation.ensurePortrait90Cw(image.content(), "jpg")
+                        : image.content();
+                Files.write(file, payload);
                 tempFiles.add(file);
             }
             List<String> depthPaths = new ArrayList<>();
@@ -81,7 +101,10 @@ public class SlamLocalizationService {
                     continue;
                 }
                 Path df = tempDir.resolve("%02d-depth-%s".formatted(i, safeName(d.originalFilename())));
-                Files.write(df, d.content());
+                byte[] dPayload = variant == Variant.SHADOW
+                        ? ImageRotation.ensurePortrait90Cw(d.content(), "png")
+                        : d.content();
+                Files.write(df, dPayload);
                 tempDepthFiles.add(df);
                 depthPaths.add(df.toString());
             }

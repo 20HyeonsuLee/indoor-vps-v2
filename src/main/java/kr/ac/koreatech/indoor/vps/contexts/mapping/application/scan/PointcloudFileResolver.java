@@ -63,6 +63,21 @@ public class PointcloudFileResolver {
         return new PointcloudResource(new PathResource(file), sizeOrZero(file));
     }
 
+    /** B variant: {@code <scan_dir>/v2/cloud.ply}. V2ScanAdminController가 빌드. */
+    public PointcloudResource resolveForFloorV2(UUID floorId) {
+        FloorScanEntity floorScan = floorScanRepository
+                .findFirstByFloor_FloorIdAndActiveTrueOrderByCreatedAtDesc(floorId)
+                .orElseThrow(() -> new ClientApiException(
+                        HttpStatus.NOT_FOUND, "NO_ACTIVE_SCAN", "floor has no active scan"));
+        Path file = resolveStoragePath(floorScan.getScan().getStoragePath()).resolve("v2").resolve(CLOUD_FILE_NAME);
+        if (!Files.exists(file) || !Files.isRegularFile(file)) {
+            throw new ClientApiException(
+                    HttpStatus.NOT_FOUND, "POINTCLOUD_V2_NOT_AVAILABLE",
+                    "v2 pointcloud not exported yet: " + file);
+        }
+        return new PointcloudResource(new PathResource(file), sizeOrZero(file));
+    }
+
     private Path resolveStoragePath(String storagePath) {
         Path path = Path.of(storagePath);
         if (!path.isAbsolute()) {

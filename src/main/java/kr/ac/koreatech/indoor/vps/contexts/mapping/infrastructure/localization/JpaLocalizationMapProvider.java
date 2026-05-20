@@ -43,6 +43,18 @@ public class JpaLocalizationMapProvider implements LocalizationMapProvider {
         return fallbackSingleMap(buildingId);
     }
 
+    @Override
+    public List<FloorMapBridgeRef> activeFloorMapsV2(String buildingId) {
+        Optional<UUID> buildingUuid = parseUuid(buildingId);
+        if (buildingUuid.isEmpty()) {
+            return List.of();
+        }
+        return floorScanRepository.findActiveForBuilding(buildingUuid.get()).stream()
+                .map(this::toBridgeRefV2)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
     private FloorMapBridgeRef toBridgeRef(FloorScanEntity floorScan) {
         return new FloorMapBridgeRef(
                 floorScan.getFloor().getFloorId().toString(),
@@ -51,6 +63,50 @@ public class JpaLocalizationMapProvider implements LocalizationMapProvider {
                 floorScan.getFloor().getLevel(),
                 rtabmapDbPath(floorScan.getScan().getStoragePath()).toString()
         );
+    }
+
+    private FloorMapBridgeRef toBridgeRefV2(FloorScanEntity floorScan) {
+        Path v2Db = v2DbPath(floorScan.getScan().getStoragePath());
+        if (v2Db == null || !Files.exists(v2Db)) {
+            return null;
+        }
+        return new FloorMapBridgeRef(
+                floorScan.getFloor().getFloorId().toString(),
+                floorScan.getArea().getAreaId().toString(),
+                floorScan.getFloor().getName(),
+                floorScan.getFloor().getLevel(),
+                v2Db.toString()
+        );
+    }
+
+    /** V2(rtabmap-native) 아티팩트는 {@code <scan_dir>/v2/} 하위에 격리 보관. */
+    private Path v2DbPath(String storagePath) {
+        Path scanDir = scanDirOf(storagePath);
+        if (scanDir == null) {
+            return null;
+        }
+        Path v2Dir = scanDir.resolve("v2");
+        Path reprocessed = v2Dir.resolve("rtabmap_reprocessed.db");
+        if (Files.exists(reprocessed)) {
+            return reprocessed;
+        }
+        Path raw = v2Dir.resolve("rtabmap.db");
+        return Files.exists(raw) ? raw : null;
+    }
+
+    private Path scanDirOf(String storagePath) {
+        Path path = Path.of(storagePath);
+        if (!path.isAbsolute()) {
+            path = properties.getStorageRoot().resolve(path);
+        }
+        Path fileName = path.getFileName();
+        if (fileName != null) {
+            String n = fileName.toString();
+            if (n.endsWith(".db") || n.endsWith(".zip")) {
+                return path.getParent();
+            }
+        }
+        return path;
     }
 
     private List<FloorMapBridgeRef> fallbackSingleMap(String buildingId) {

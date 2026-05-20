@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.application.SlamLocalizationService;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.SlamLocalizationFacade;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.LocalizeCommand.ImagePayload;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.slam.SLAMLocalizeResult;
@@ -28,10 +28,10 @@ import org.springframework.web.multipart.MultipartFile;
 public class SlamController {
     private static final Logger log = LoggerFactory.getLogger(SlamController.class);
 
-    private final SlamLocalizationService localizationService;
+    private final SlamLocalizationFacade localizationService;
     private final FixtureCaptureService fixtureCapture;
 
-    public SlamController(SlamLocalizationService localizationService, FixtureCaptureService fixtureCapture) {
+    public SlamController(SlamLocalizationFacade localizationService, FixtureCaptureService fixtureCapture) {
         this.localizationService = localizationService;
         this.fixtureCapture = fixtureCapture;
     }
