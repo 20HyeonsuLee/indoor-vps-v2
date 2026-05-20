@@ -1,6 +1,7 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,6 +27,13 @@ import org.springframework.stereotype.Service;
 public class SlamLocalizationFacade {
     private static final Logger log = LoggerFactory.getLogger(SlamLocalizationFacade.class);
 
+    // 응답으로 SHADOW(B안) 결과를 돌려보낼 floor. 나머지 floor는 PRIMARY가 응답을 줌.
+    // 의도: 특정 floor에서 B안의 SuperPoint+rtabmap-native artefact가 더 정확한 경우
+    // 코드 변경 없이 floor 단위로 점진 전환할 수 있도록 hardcoded set.
+    private static final Set<UUID> SHADOW_AS_PRIMARY_FLOORS = Set.of(
+            UUID.fromString("c1bc143c-052b-4d0f-8e95-f6b2f521c144")  // 2공학관(Real) 2층
+    );
+
     private final SlamLocalizer primary;
     private final SlamLocalizer shadow;
     private final ShadowLocalizeLogger shadowLogger;
@@ -48,50 +56,84 @@ public class SlamLocalizationFacade {
     }
 
     public SLAMLocalizeResult localize(LocalizeCommand command) {
+        boolean swap = shouldUseShadowAsPrimary(command);
+        SlamLocalizer responder = swap ? shadow : primary;
+        SlamLocalizer secondary = swap ? primary : shadow;
+        String responderLabel = swap ? "shadow" : "primary";
+        String secondaryLabel = swap ? "primary" : "shadow";
+
         String requestId = UUID.randomUUID().toString();
-        long primaryStart = System.currentTimeMillis();
-        SLAMLocalizeResult primaryResult;
-        ResultSnapshot primarySnapshot;
+        long t0 = System.currentTimeMillis();
+        SLAMLocalizeResult result;
+        ResultSnapshot responderSnapshot;
         try {
-            primaryResult = primary.localize(command);
-            primarySnapshot = new ResultSnapshot(primaryResult, System.currentTimeMillis() - primaryStart, null);
+            result = responder.localize(command);
+            responderSnapshot = new ResultSnapshot(result, System.currentTimeMillis() - t0, null);
         } catch (RuntimeException e) {
-            primarySnapshot = new ResultSnapshot(null, System.currentTimeMillis() - primaryStart, e.getMessage());
-            fireShadow(command, requestId, primarySnapshot);
+            responderSnapshot = new ResultSnapshot(null, System.currentTimeMillis() - t0, e.getMessage());
+            fireSecondary(command, requestId, responderSnapshot, secondary, responderLabel, secondaryLabel);
             throw e;
         }
-        fireShadow(command, requestId, primarySnapshot);
-        return primaryResult;
+        fireSecondary(command, requestId, responderSnapshot, secondary, responderLabel, secondaryLabel);
+        return result;
     }
 
-    private void fireShadow(LocalizeCommand command, String requestId, ResultSnapshot primarySnapshot) {
+    private boolean shouldUseShadowAsPrimary(LocalizeCommand command) {
+        if (command.floorId() == null || command.floorId().isBlank()) {
+            return false;
+        }
         try {
-            shadowExecutor.execute(() -> runShadow(command, requestId, primarySnapshot));
+            return SHADOW_AS_PRIMARY_FLOORS.contains(UUID.fromString(command.floorId()));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private void fireSecondary(
+            LocalizeCommand command,
+            String requestId,
+            ResultSnapshot responderSnapshot,
+            SlamLocalizer secondary,
+            String responderLabel,
+            String secondaryLabel
+    ) {
+        try {
+            shadowExecutor.execute(() -> runSecondary(command, requestId, responderSnapshot, secondary, responderLabel, secondaryLabel));
         } catch (RuntimeException e) {
             log.warn("[shadow] enqueue failed: {}", e.getMessage());
         }
     }
 
-    private void runShadow(LocalizeCommand command, String requestId, ResultSnapshot primarySnapshot) {
+    private void runSecondary(
+            LocalizeCommand command,
+            String requestId,
+            ResultSnapshot responderSnapshot,
+            SlamLocalizer secondary,
+            String responderLabel,
+            String secondaryLabel
+    ) {
         long t0 = System.currentTimeMillis();
-        ResultSnapshot shadowSnapshot;
+        ResultSnapshot secondarySnapshot;
         try {
-            SLAMLocalizeResult shadowResult = shadow.localize(command);
-            shadowSnapshot = new ResultSnapshot(shadowResult, System.currentTimeMillis() - t0, null);
+            SLAMLocalizeResult res = secondary.localize(command);
+            secondarySnapshot = new ResultSnapshot(res, System.currentTimeMillis() - t0, null);
         } catch (RuntimeException e) {
-            shadowSnapshot = new ResultSnapshot(null, System.currentTimeMillis() - t0, e.getMessage());
+            secondarySnapshot = new ResultSnapshot(null, System.currentTimeMillis() - t0, e.getMessage());
         }
-        DiffSnapshot diff = computeDiff(primarySnapshot.result(),
-                shadowSnapshot.result() == null ? null : shadowSnapshot.result());
+        log.info("[localize] responder={} secondary={} floor={}", responderLabel, secondaryLabel, command.floorId());
+        DiffSnapshot diff = computeDiff(responderSnapshot.result(),
+                secondarySnapshot.result() == null ? null : secondarySnapshot.result());
         int depthCount = command.depths() == null ? 0 : (int) command.depths().stream().filter(d -> d != null).count();
+        // LocalizeShadowEntry는 [primary, shadow] 슬롯 의미. swap된 경우 응답한 쪽(shadow)을
+        // primary 슬롯에 두면 사후 분석할 때 "응답에 사용한 결과"가 항상 primary 슬롯에 있어 일관.
         shadowLogger.append(new LocalizeShadowEntry(
                 requestId,
                 command.buildingId(),
                 command.floorId(),
                 command.images() == null ? 0 : command.images().size(),
                 depthCount,
-                primarySnapshot,
-                shadowSnapshot,
+                responderSnapshot,
+                secondarySnapshot,
                 diff
         ));
     }

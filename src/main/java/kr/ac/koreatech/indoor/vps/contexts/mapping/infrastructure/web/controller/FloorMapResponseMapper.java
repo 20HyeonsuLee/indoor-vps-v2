@@ -89,8 +89,11 @@ public class FloorMapResponseMapper {
             List<VerticalConnectorStopEntity> stopsInBuilding,
             Map<UUID, MapNodeEntity> nodeById
     ) {
+        // route_node_id 가 null 인 stop 은 클라이언트(iOS Codable)에서 decode 불가.
+        // FK ON DELETE SET NULL 로 cascade 시 발생하는 dangling stop 을 응답에서 제외.
         Map<UUID, List<VerticalConnectorStopEntity>> stopsByConnector = new HashMap<>();
         for (VerticalConnectorStopEntity s : stopsInBuilding) {
+            if (s.getRouteNodeId() == null) continue;
             stopsByConnector
                     .computeIfAbsent(s.getConnector().getConnectorId(), k -> new ArrayList<>())
                     .add(s);
@@ -98,11 +101,12 @@ public class FloorMapResponseMapper {
 
         List<FloorMapConnectorRef> out = new ArrayList<>();
         for (VerticalConnectorStopEntity localStop : stopsInArea) {
+            if (localStop.getRouteNodeId() == null) continue;
             UUID connectorId = localStop.getConnector().getConnectorId();
             List<VerticalConnectorStopEntity> siblings = stopsByConnector.getOrDefault(connectorId, List.of());
             List<FloorMapConnectorStop> stopsOut = new ArrayList<>();
             for (VerticalConnectorStopEntity sib : siblings) {
-                MapNodeEntity refNode = sib.getRouteNodeId() == null ? null : nodeById.get(sib.getRouteNodeId());
+                MapNodeEntity refNode = nodeById.get(sib.getRouteNodeId());
                 Double sx = null, sy = null, sz = null;
                 if (refNode != null) {
                     sx = NavigationGeometry.x(refNode.getGeom());
@@ -118,7 +122,7 @@ public class FloorMapResponseMapper {
                         sx, sy, sz
                 ));
             }
-            MapNodeEntity localNode = localStop.getRouteNodeId() == null ? null : nodeById.get(localStop.getRouteNodeId());
+            MapNodeEntity localNode = nodeById.get(localStop.getRouteNodeId());
             Double lx = null, ly = null, lz = null;
             if (localNode != null) {
                 lx = NavigationGeometry.x(localNode.getGeom());
