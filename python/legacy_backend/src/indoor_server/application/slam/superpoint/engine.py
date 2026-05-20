@@ -3,6 +3,7 @@ import asyncio
 import io
 import logging
 import os
+import time
 
 import cv2
 import numpy as np
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 # 짧은 view(가까운 KF)에 conf가 비대해지는 편향이 있어 기본 비활성.
 # 켜고 싶을 때만 SLAM_USE_RGBD=true.
 _USE_RGBD = os.environ.get("SLAM_USE_RGBD", "false").strip().lower() in ("1", "true", "yes")
+_EARLY_CONFIDENCE = float(os.environ.get("SLAM_EARLY_CONFIDENCE", "0.75"))
+_EARLY_MIN_MATCHES = int(os.environ.get("SLAM_EARLY_MIN_MATCHES", "10"))
 
 
 def _to_gray_float(img_bytes: bytes) -> np.ndarray | None:
@@ -98,6 +101,20 @@ class SuperPointEngine:
         self._matcher = LightGlue(features='superpoint').eval().to(self._device)
         logger.info(f"[SuperPoint] Engine ready on {self._device} (cudnn.deterministic=True)")
 
+    def _sync_device(self) -> None:
+        if str(self._device).startswith("cuda"):
+            torch.cuda.synchronize(self._device)
+
+    def _elapsed_ms(self, started_at: float) -> float:
+        self._sync_device()
+        return (time.perf_counter() - started_at) * 1000.0
+
+    def _good_enough(self, candidate: dict) -> bool:
+        return (
+            float(candidate["confidence"]) >= _EARLY_CONFIDENCE
+            and int(candidate["num_matches"]) >= _EARLY_MIN_MATCHES
+        )
+
     def extract_intrinsics_from_db(self, db_path: str) -> dict:
         from indoor_server.application.slam.rtabmap_intrinsics import RTABMapEngine
 
@@ -157,14 +174,21 @@ class SuperPointEngine:
         C = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]], dtype=np.float64)
 
         best: dict | None = None
+        localize_started_at = time.perf_counter()
 
         for img_idx, img_bytes in enumerate(images):
+            image_started_at = time.perf_counter()
+            stage_started_at = time.perf_counter()
             gray = _to_gray_float(img_bytes)
             if gray is None:
                 continue
+            decode_ms = self._elapsed_ms(stage_started_at)
 
+            stage_started_at = time.perf_counter()
             q_feats = self._extract(gray)
             q_kps = q_feats['keypoints'][0].cpu().numpy()  # (N, 2)
+            q_feats_cpu = {k: v.cpu() for k, v in q_feats.items()}
+            superpoint_ms = self._elapsed_ms(stage_started_at)
 
             # If depth is provided for this frame, pre-lift query SP kp to rtab-cam 3D
             # for the RGBD (3D-3D) path. None → 2D-3D PnP fallback.
@@ -195,21 +219,49 @@ class SuperPointEngine:
                     )
 
             from .global_descriptor import GlobalDescExtractor
+            stage_started_at = time.perf_counter()
             gray_uint8 = (gray * 255).clip(0, 255).astype(np.uint8)
             q_global = GlobalDescExtractor(self._device).extract(gray_uint8)  # (384,)
+            dino_ms = self._elapsed_ms(stage_started_at)
 
-            candidates = loaded.top_k_candidates(q_global)
+            stage_started_at = time.perf_counter()
+            candidate_scores = loaded.top_k_candidate_scores(q_global)
+            candidates = [node_id for node_id, _ in candidate_scores]
+            candidate_ms = self._elapsed_ms(stage_started_at)
+            logger.info(
+                "[SuperPointTrace] map=%s img=%d decodeMs=%.1f superpointMs=%.1f "
+                "dinoMs=%.1f candidateMs=%.1f candidates=%s",
+                map_id,
+                img_idx,
+                decode_ms,
+                superpoint_ms,
+                dino_ms,
+                candidate_ms,
+                ",".join(f"{node_id}:{score:.3f}" for node_id, score in candidate_scores),
+            )
 
             for node_id in candidates:
+                candidate_started_at = time.perf_counter()
                 db_feats = loaded.keyframe_feats[node_id]
                 world3d = loaded.keyframe_world3d[node_id]          # (M, 3)
 
+                stage_started_at = time.perf_counter()
                 matches = self._match(
-                    {k: v.cpu() for k, v in q_feats.items()},
+                    q_feats_cpu,
                     db_feats,
                 )  # (P, 2)
+                match_ms = self._elapsed_ms(stage_started_at)
 
                 if len(matches) < 4:
+                    logger.info(
+                        "[SuperPointTrace] map=%s img=%d node=%s lightglueMs=%.1f "
+                        "matches=%d skip=too_few_matches",
+                        map_id,
+                        img_idx,
+                        node_id,
+                        match_ms,
+                        len(matches),
+                    )
                     continue
 
                 # Compute keyframe centroid (avg world3d ≠ NaN) for diagnostic.
@@ -279,11 +331,22 @@ class SuperPointEngine:
                     pts_3d.append(w)
 
                 if len(pts_3d) < 4:
+                    logger.info(
+                        "[SuperPointTrace] map=%s img=%d node=%s lightglueMs=%.1f "
+                        "matches=%d valid3d=%d skip=too_few_3d",
+                        map_id,
+                        img_idx,
+                        node_id,
+                        match_ms,
+                        len(matches),
+                        len(pts_3d),
+                    )
                     continue
 
                 pts_2d = np.array(pts_2d, dtype=np.float64)
                 pts_3d = np.array(pts_3d, dtype=np.float64)
 
+                stage_started_at = time.perf_counter()
                 ok, rvec, tvec, inliers = cv2.solvePnPRansac(
                     pts_3d, pts_2d, K, None,
                     flags=cv2.SOLVEPNP_EPNP,
@@ -293,11 +356,36 @@ class SuperPointEngine:
                 )
 
                 if not ok or inliers is None or len(inliers) < 8:
+                    logger.info(
+                        "[SuperPointTrace] map=%s img=%d node=%s lightglueMs=%.1f "
+                        "poseMs=%.1f matches=%d valid3d=%d skip=pnp_failed",
+                        map_id,
+                        img_idx,
+                        node_id,
+                        match_ms,
+                        self._elapsed_ms(stage_started_at),
+                        len(matches),
+                        len(pts_3d),
+                    )
                     continue
 
                 n_in = len(inliers)
                 _conf_local = n_in / max(len(pts_3d), 1)
                 if _conf_local < 0.30:
+                    logger.info(
+                        "[SuperPointTrace] map=%s img=%d node=%s lightglueMs=%.1f "
+                        "poseMs=%.1f matches=%d valid3d=%d inliers=%d confidence=%.3f "
+                        "skip=low_confidence",
+                        map_id,
+                        img_idx,
+                        node_id,
+                        match_ms,
+                        self._elapsed_ms(stage_started_at),
+                        len(matches),
+                        len(pts_3d),
+                        n_in,
+                        _conf_local,
+                    )
                     continue
 
                 # RANSAC EPNP는 algebraic minimum이라 sub-pixel 정확도 부족. inlier
@@ -310,6 +398,7 @@ class SuperPointEngine:
                     pts_3d_in, pts_2d_in, K, None, rvec, tvec,
                     criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 50, 1e-6),
                 )
+                pose_ms = self._elapsed_ms(stage_started_at)
 
                 # Convert PnP result to RTABMap world pose
                 # (same convention as RTABMapEngine / map_manager)
@@ -335,6 +424,44 @@ class SuperPointEngine:
                     continue
                 if best is None or n_in > best['num_matches']:
                     best = candidate
+                logger.info(
+                    "[SuperPointTrace] map=%s img=%d node=%s lightglueMs=%.1f "
+                    "poseMs=%.1f totalCandidateMs=%.1f method=PnP matches=%d "
+                    "valid3d=%d inliers=%d confidence=%.3f early=%s",
+                    map_id,
+                    img_idx,
+                    node_id,
+                    match_ms,
+                    pose_ms,
+                    self._elapsed_ms(candidate_started_at),
+                    len(matches),
+                    len(pts_3d),
+                    n_in,
+                    confidence,
+                    self._good_enough(candidate),
+                )
+                if self._good_enough(candidate):
+                    logger.info(
+                        "[SuperPoint] early-stop map=%s img=%d node=%s inliers=%d "
+                        "confidence=%.3f method=PnP imageMs=%.1f totalMs=%.1f",
+                        map_id,
+                        img_idx,
+                        node_id,
+                        n_in,
+                        confidence,
+                        self._elapsed_ms(image_started_at),
+                        self._elapsed_ms(localize_started_at),
+                    )
+                    return {**candidate, 'map_id': map_id, 'method': 'SuperPoint+LightGlue'}
+
+            logger.info(
+                "[SuperPointTrace] map=%s img=%d imageTotalMs=%.1f bestConfidence=%.3f bestMatches=%d",
+                map_id,
+                img_idx,
+                self._elapsed_ms(image_started_at),
+                float(best["confidence"]) if best is not None else 0.0,
+                int(best["num_matches"]) if best is not None else 0,
+            )
 
         if best is None:
             raise ValueError("SuperPoint+LightGlue: insufficient matches")

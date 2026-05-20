@@ -26,7 +26,8 @@ from PIL import Image, ImageOps
 logger = logging.getLogger(__name__)
 
 MAX_CACHED_MAPS = 5
-TOP_K = 5
+TOP_K = int(os.environ.get("SLAM_CANDIDATE_TOP_K", "3"))
+MIN_GLOBAL_SIMILARITY = float(os.environ.get("SLAM_CANDIDATE_MIN_SIM", "0.0"))
 
 # Bump when the build-time world3d derivation changes (e.g., ORB-mediated → depth-lift).
 # Caches with older version trigger rebuild on next load.
@@ -1138,19 +1139,37 @@ class SuperPointLoadedMap:
         )
         return n_filled, n_attempted
 
-    def top_k_candidates(
+    def top_k_candidate_scores(
         self, q_desc_mean: torch.Tensor, k: int = TOP_K
-    ) -> list[int]:
-        """Return top-K node IDs by cosine similarity of mean descriptors."""
+    ) -> list[tuple[int, float]]:
+        """Return top-K node IDs and cosine similarities."""
         if self.global_descs is None or not self.node_ids:
-            return self.node_ids[:k]
+            return [(node_id, 0.0) for node_id in self.node_ids[:k]]
         sims = torch.cosine_similarity(
             q_desc_mean.unsqueeze(0), self.global_descs
         )
         k = min(k, len(self.node_ids))
-        indices = sims.topk(k).indices.tolist()
-        return [self.node_ids[i] for i in indices]
+        values, indices = sims.topk(k)
+        candidates = [
+            (self.node_ids[int(i)], float(score))
+            for i, score in zip(indices.tolist(), values.tolist(), strict=False)
+        ]
+        if MIN_GLOBAL_SIMILARITY <= 0:
+            return candidates
+        filtered = [
+            (node_id, score)
+            for node_id, score in candidates
+            if score >= MIN_GLOBAL_SIMILARITY
+        ]
+        if filtered:
+            return filtered
+        return candidates[:1]
 
+    def top_k_candidates(
+        self, q_desc_mean: torch.Tensor, k: int = TOP_K
+    ) -> list[int]:
+        """Return top-K node IDs by cosine similarity of mean descriptors."""
+        return [node_id for node_id, _ in self.top_k_candidate_scores(q_desc_mean, k)]
 
 # ---------------------------------------------------------------------------
 # Singleton manager
