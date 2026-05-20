@@ -115,8 +115,17 @@ public class SlamLocalizationService implements SlamLocalizer {
                     properties.getStorageRoot().toString(),
                     floorMaps
             ));
+            java.util.Map<String, Object> pose = response.pose();
+            if (variant == Variant.SHADOW) {
+                // SHADOW path는 query를 portrait(90°CW)로 회전해서 SuperPoint engine에
+                // 보냈음. engine의 C 매트릭스는 landscape OpenCV optical 가정이라 결과
+                // R은 portrait 기준으로 90° 어긋남. 클라가 기대하는 landscape frame으로
+                // 되돌리기 위해 quaternion에 z-axis 90°CCW 회전을 곱함 (translation은
+                // image orientation 무관이라 그대로).
+                pose = rotateCameraAroundZ(pose, Math.PI / 2.0);
+            }
             return new SLAMLocalizeResult(
-                    response.pose(),
+                    pose,
                     response.confidence(),
                     response.numMatches(),
                     response.matchedImageIndex(),
@@ -168,6 +177,39 @@ public class SlamLocalizationService implements SlamLocalizer {
                     "File %d is empty".formatted(index + 1)
             );
         }
+    }
+
+    /**
+     * Camera-frame z-axis 회전을 quaternion에 right-multiply (q' = q * q_z(angle)).
+     * SHADOW path에서 portrait↔landscape 90° 보정. translation은 그대로.
+     */
+    @SuppressWarnings("unchecked")
+    private java.util.Map<String, Object> rotateCameraAroundZ(java.util.Map<String, Object> pose, double angleRad) {
+        if (pose == null) return pose;
+        double qx = asDouble(pose.get("qx"));
+        double qy = asDouble(pose.get("qy"));
+        double qz = asDouble(pose.get("qz"));
+        double qw = asDouble(pose.get("qw"));
+        // q_z(angle) = (0, 0, sin(angle/2), cos(angle/2))
+        double s = Math.sin(angleRad / 2.0);
+        double c = Math.cos(angleRad / 2.0);
+        double rx = 0.0, ry = 0.0, rz = s, rw = c;
+        // Hamilton product q' = q * r
+        double nx = qw * rx + qx * rw + qy * rz - qz * ry;
+        double ny = qw * ry - qx * rz + qy * rw + qz * rx;
+        double nz = qw * rz + qx * ry - qy * rx + qz * rw;
+        double nw = qw * rw - qx * rx - qy * ry - qz * rz;
+        if (nw < 0) { nx = -nx; ny = -ny; nz = -nz; nw = -nw; }
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(pose);
+        out.put("qx", nx);
+        out.put("qy", ny);
+        out.put("qz", nz);
+        out.put("qw", nw);
+        return out;
+    }
+
+    private static double asDouble(Object v) {
+        return v instanceof Number n ? n.doubleValue() : 0.0;
     }
 
     private String safeName(String filename) {

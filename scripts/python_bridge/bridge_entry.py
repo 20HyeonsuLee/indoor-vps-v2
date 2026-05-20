@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 import sys
@@ -21,6 +22,8 @@ COMMANDS = (
     "build_superpoint_index",
     "export_pointcloud",
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BridgeContractError(ValueError):
@@ -41,8 +44,23 @@ class BridgeRuntimeError(RuntimeError):
         self.detail = detail or {}
 
 
+def configure_logging(enabled: bool) -> None:
+    if not enabled:
+        logging.basicConfig(level=logging.CRITICAL, force=True)
+        return
+    level_name = os.environ.get("PYTHON_BRIDGE_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
+
+
 def main() -> int:
     command = sys.argv[1] if len(sys.argv) > 1 else ""
+    configure_logging(command == "daemon")
     if command == "daemon":
         return daemon_loop()
     try:
@@ -99,6 +117,7 @@ def health_response() -> dict[str, object]:
 
 def daemon_loop() -> int:
     write_line({"event": "ready", "commands": list(COMMANDS)})
+    logger.info("Python bridge daemon logging enabled")
     for raw_line in sys.stdin:
         line = raw_line.strip()
         if not line:
@@ -692,11 +711,10 @@ async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, objec
         "--voxel", "0.10",
         # ARKit sceneDepth 신뢰 범위 5m (≥6m는 노이즈 폭증).
         "--max_range", "5",
-        # Isolated outlier 제거. noise_k=5는 rtabmap default. ARKit raw depth는
-        # view-간 일관성이 약해 noise_k=2(이전값)에선 ray-방향 줄무늬 outlier가
-        # 그대로 남았음 → 5cm 반경에 이웃 5개 미만이면 컷으로 강화 (point ~76% 컷).
-        "--noise_radius", "0.05",
-        "--noise_k", "5",
+        # noise filter — RGBA depth가 마스킹 후 sparse(valid 13%)면 PCL KDTree에
+        # NaN 들어가 export 자체가 assertion fail. 일단 비활성.
+        "--noise_radius", "0",
+        "--noise_k", "0",
         # ARKit confidenceMap (Low=0/Med=50/High=100) 임계치. 클라가 depth_confidence를
         # 보내기 시작하면 신뢰도 50 미만 픽셀이 자동 컷되어 노이즈가 더 깎임.
         # depth_confidence 칼럼이 NULL인 기존 scan은 이 옵션이 무시되므로 BC 유지.
