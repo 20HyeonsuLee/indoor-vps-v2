@@ -7,9 +7,16 @@ public record RouteEdge(
         UUID fromId,
         UUID toId,
         double lengthM,
-        EdgeType type
+        EdgeType type,
+        double costM,
+        String connectorType,
+        String connectorKey
 ) {
+    public RouteEdge(UUID id, UUID fromId, UUID toId, double lengthM, EdgeType type) {
+        this(id, fromId, toId, lengthM, type, lengthM, null, null);
+    }
+
     public RouteEdge reversed() {
-        return new RouteEdge(id, toId, fromId, lengthM, type);
+        return new RouteEdge(id, toId, fromId, lengthM, type, costM, connectorType, connectorKey);
     }
 }

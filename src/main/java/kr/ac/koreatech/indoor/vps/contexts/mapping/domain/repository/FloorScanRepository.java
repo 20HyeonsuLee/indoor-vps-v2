@@ -50,7 +50,7 @@ public interface FloorScanRepository extends JpaRepository<FloorScanEntity, UUID
     @Query("select coalesce(max(fs.uploadOrder), 0) + 1 from FloorScanEntity fs where fs.floor.floorId = :floorId")
     int nextUploadOrder(@Param("floorId") UUID floorId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update FloorScanEntity fs set fs.active = false where fs.area.areaId = :areaId")
     int deactivateForArea(@Param("areaId") UUID areaId);
 }

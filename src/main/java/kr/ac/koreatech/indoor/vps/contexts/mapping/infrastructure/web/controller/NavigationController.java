@@ -13,6 +13,8 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.Pathfi
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.PathStep;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PlanRouteUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PlanRouteUseCase.FloorRouteResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.RoutePreference;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.VerticalPreference;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -66,7 +68,9 @@ public class NavigationController {
                 request.startY(),
                 request.startZ(),
                 request.destinationId(),
-                request.destinationName()
+                request.destinationName(),
+                request.preference() == null ? null : RoutePreference.valueOf(request.preference().name()),
+                request.verticalPreference() == null ? null : VerticalPreference.valueOf(request.verticalPreference().name())
         ));
         return toPathfindingResponse(result);
     }

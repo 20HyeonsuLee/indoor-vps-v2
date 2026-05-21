@@ -39,3 +39,9 @@ indoor:
     enabled: ${BUILD_WORKER_ENABLED:true}
     poll-interval-ms: ${BUILD_WORKER_POLL_INTERVAL_MS:2000}
     batch-size: ${BUILD_WORKER_BATCH_SIZE:1}
+  poi-labeler:
+    enabled: ${POI_LABELER_ENABLED:false}
+    executable: ${POI_LABELER_PYTHON:python3}
+    working-dir: ${POI_LABELER_DIR:./python/tools/poi_labeler}
+    entry-script: ${POI_LABELER_ENTRY:label_pois.py}
+    timeout-seconds: ${POI_LABELER_TIMEOUT_SECONDS:600}

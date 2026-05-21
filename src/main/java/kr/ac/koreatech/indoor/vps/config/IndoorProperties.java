@@ -10,6 +10,7 @@ public class IndoorProperties {
     private Rtabmap rtabmap = new Rtabmap();
     private BuildWorker buildWorker = new BuildWorker();
     private FixtureCapture fixtureCapture = new FixtureCapture();
+    private PoiLabeler poiLabeler = new PoiLabeler();
 
     public Path getStorageRoot() { return storageRoot; }
     public void setStorageRoot(Path storageRoot) { this.storageRoot = storageRoot; }
@@ -25,6 +26,9 @@ public class IndoorProperties {
 
     public FixtureCapture getFixtureCapture() { return fixtureCapture; }
     public void setFixtureCapture(FixtureCapture fixtureCapture) { this.fixtureCapture = fixtureCapture; }
+
+    public PoiLabeler getPoiLabeler() { return poiLabeler; }
+    public void setPoiLabeler(PoiLabeler poiLabeler) { this.poiLabeler = poiLabeler; }
 
     public static class Python {
         private boolean enabled;
@@ -126,5 +130,28 @@ public class IndoorProperties {
 
         public Path getRoot() { return root; }
         public void setRoot(Path root) { this.root = root; }
+    }
+
+    public static class PoiLabeler {
+        private boolean enabled;
+        private String executable = "python3";
+        private Path workingDir = Path.of("./python/tools/poi_labeler");
+        private String entryScript = "label_pois.py";
+        private long timeoutSeconds = 600;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        public String getExecutable() { return executable; }
+        public void setExecutable(String executable) { this.executable = executable; }
+
+        public Path getWorkingDir() { return workingDir; }
+        public void setWorkingDir(Path workingDir) { this.workingDir = workingDir; }
+
+        public String getEntryScript() { return entryScript; }
+        public void setEntryScript(String entryScript) { this.entryScript = entryScript; }
+
+        public long getTimeoutSeconds() { return timeoutSeconds; }
+        public void setTimeoutSeconds(long timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }
     }
 }

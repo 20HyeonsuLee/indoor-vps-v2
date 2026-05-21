@@ -23,4 +23,12 @@ public interface FloorAreaPolygonRepository extends JpaRepository<FloorAreaPolyg
               and p.markSessionId = 'manual_edit'
             """)
     int deleteManualByAreaId(@Param("areaId") UUID areaId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            delete from FloorAreaPolygonEntity p
+            where p.floorArea.areaId = :areaId
+              and p.markSessionId like 'edge_width:%'
+            """)
+    int deleteEdgeWidthByAreaId(@Param("areaId") UUID areaId);
 }

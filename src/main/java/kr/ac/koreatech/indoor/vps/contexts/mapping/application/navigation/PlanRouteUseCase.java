@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.BuildingRouteGraphProvider.CompositeGraph;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.FloorTransition;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.PathStep;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PathfindingResult.RoutePosition;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.navigation.PoiRouteTargetResolver.PoiRouteTarget;
@@ -71,7 +72,7 @@ public class PlanRouteUseCase {
         List<PathStep> steps = new ArrayList<>();
         steps.add(new PathStep(1, command.startFloorLevel(), start, "Start", null));
         if (target.routeNodeId() != null) {
-            CompositeGraph graph = buildingRouteGraphProvider.build(buildingId);
+            CompositeGraph graph = buildingRouteGraphProvider.build(buildingId, command.effectiveVerticalPreference());
             Point3 startPos = new Point3(command.startX(), command.startY(), command.startZ());
             List<RouteNode> mutableNodes = new ArrayList<>(graph.nodes());
             List<RouteEdge> mutableEdges = new ArrayList<>(graph.edges());
@@ -109,13 +110,16 @@ public class PlanRouteUseCase {
                     return new PathfindingResult(
                             buildingId,
                             route.totalDistance(),
-                            graphService.estimateWalkingSeconds(route.totalDistance()),
+                            graphService.estimateWalkingSeconds(route.totalCost()),
                             steps,
-                            List.of(),
+                            floorTransitions(route.edges(), byId, graph),
                             metadataOf(
                                     "destinationId", command.destinationId(),
                                     "destinationName", command.destinationName(),
-                                    "destinationFound", true
+                                    "destinationFound", true,
+                                    "preference", command.preference(),
+                                    "verticalPreference", command.effectiveVerticalPreference(),
+                                    "totalCost", route.totalCost()
                             )
                     );
                 }
@@ -137,7 +141,10 @@ public class PlanRouteUseCase {
                 metadataOf(
                         "destinationId", command.destinationId(),
                         "destinationName", command.destinationName(),
-                        "destinationFound", true
+                        "destinationFound", true,
+                        "preference", command.preference(),
+                        "verticalPreference", command.effectiveVerticalPreference(),
+                        "totalCost", distance
                 )
         );
     }
@@ -268,6 +275,28 @@ public class PlanRouteUseCase {
 
     private Integer floorLevelFor(RouteNode node, CompositeGraph graph) {
         return node.areaId() == null ? null : graph.areaToFloorLevel().get(node.areaId());
+    }
+
+    private List<FloorTransition> floorTransitions(
+            List<RouteEdge> edges,
+            Map<UUID, RouteNode> byId,
+            CompositeGraph graph
+    ) {
+        List<FloorTransition> transitions = new ArrayList<>();
+        for (RouteEdge edge : edges) {
+            if (edge.type() != EdgeType.vertical_connector) {
+                continue;
+            }
+            RouteNode from = byId.get(edge.fromId());
+            RouteNode to = byId.get(edge.toId());
+            transitions.add(new FloorTransition(
+                    from == null ? null : floorLevelFor(from, graph),
+                    to == null ? null : floorLevelFor(to, graph),
+                    edge.connectorType(),
+                    edge.connectorKey()
+            ));
+        }
+        return transitions;
     }
 
     private record Projection(double t, Point3 foot, double distance) {

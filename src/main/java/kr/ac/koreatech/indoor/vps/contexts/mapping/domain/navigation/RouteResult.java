@@ -5,9 +5,14 @@ import java.util.List;
 public record RouteResult(
         List<RouteNode> nodes,
         List<RouteEdge> edges,
-        double totalDistance
+        double totalDistance,
+        double totalCost
 ) {
+    public RouteResult(List<RouteNode> nodes, List<RouteEdge> edges, double totalDistance) {
+        this(nodes, edges, totalDistance, totalDistance);
+    }
+
     public static RouteResult empty() {
-        return new RouteResult(List.of(), List.of(), 0.0);
+        return new RouteResult(List.of(), List.of(), 0.0, 0.0);
     }
 }

@@ -49,14 +49,14 @@ Captured raw data is written under `test-fixtures/captured/`; see
 ## Docker run
 
 ```bash
-docker compose -f docker-compose.local.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 curl http://127.0.0.1:8080/openapi.json
 ```
 
 Phone fixture capture with Docker:
 
 ```bash
-FIXTURE_CAPTURE_ENABLED=true docker compose -f docker-compose.local.yml up -d --build
+FIXTURE_CAPTURE_ENABLED=true docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
 ## Architecture

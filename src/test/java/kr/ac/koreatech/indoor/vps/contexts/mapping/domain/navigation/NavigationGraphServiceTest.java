@@ -113,6 +113,31 @@ class NavigationGraphServiceTest {
     }
 
     @Test
+    void routeUsesCostButReportsPhysicalDistance() {
+        RouteNode a = node("a", 0, 0, 0);
+        RouteNode b = node("b", 1, 0, 0);
+        RouteNode c = node("c", 2, 0, 0);
+        RouteEdge cheapLong = new RouteEdge(id("edge-cheap-long"), a.id(), c.id(), 50.0,
+                EdgeType.vertical_connector, 1.0, "elevator", "ev-a");
+        RouteEdge shortExpensiveA = new RouteEdge(id("edge-short-expensive-a"), a.id(), b.id(), 1.0,
+                EdgeType.vertical_connector, 30.0, "stairs", "st-a");
+        RouteEdge shortExpensiveB = new RouteEdge(id("edge-short-expensive-b"), b.id(), c.id(), 1.0,
+                EdgeType.vertical_connector, 30.0, "stairs", "st-a");
+
+        RouteResult result = service.routeBetween(
+                List.of(a, b, c),
+                List.of(cheapLong, shortExpensiveA, shortExpensiveB),
+                a.id(),
+                c.id()
+        );
+
+        assertThat(result.edges()).extracting(RouteEdge::id)
+                .containsExactly(cheapLong.id());
+        assertThat(result.totalDistance()).isEqualTo(50.0);
+        assertThat(result.totalCost()).isEqualTo(1.0);
+    }
+
+    @Test
     void nearestNodeUsesZDistanceWhenPresent() {
         RouteNode sameXyDifferentZ = node("low", 0, 0, 0);
         RouteNode closerIn3d = node("high", 1, 0, 10);

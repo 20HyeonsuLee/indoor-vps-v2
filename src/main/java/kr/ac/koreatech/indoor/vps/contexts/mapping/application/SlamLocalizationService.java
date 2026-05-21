@@ -117,12 +117,12 @@ public class SlamLocalizationService implements SlamLocalizer {
             ));
             java.util.Map<String, Object> pose = response.pose();
             if (variant == Variant.SHADOW) {
-                // SHADOW path는 query를 portrait(90°CW)로 회전해서 SuperPoint engine에
-                // 보냈음. engine의 C 매트릭스는 landscape OpenCV optical 가정이라 결과
-                // R은 portrait 기준으로 90° 어긋남. 클라가 기대하는 landscape frame으로
-                // 되돌리기 위해 quaternion에 z-axis 90°CCW 회전을 곱함 (translation은
-                // image orientation 무관이라 그대로).
-                pose = rotateCameraAroundZ(pose, Math.PI / 2.0);
+                // SHADOW path는 portrait keyframe(rtabmap iOS native) 좌표계 기반.
+                // 사용자 앱은 landscape camera frame 기대 → portrait→landscape 변환 필요.
+                // image plane rotation = 광축(camera +x = rtcam forward) 기준 회전.
+                // R_x(+π/2) right-multiply 가 portrait→landscape 변환.
+                // (z-axis 회전은 yaw 변화라 의미가 다름.)
+                pose = rotateCameraAroundX(pose, Math.PI / 2.0);
             }
             return new SLAMLocalizeResult(
                     pose,
@@ -137,24 +137,17 @@ public class SlamLocalizationService implements SlamLocalizer {
         } catch (IOException e) {
             throw new ClientApiException(HttpStatus.SERVICE_UNAVAILABLE, "SLAM_LOCALIZE_FAILED", e.getMessage());
         } finally {
-            for (Path tempFile : tempFiles) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (IOException ignored) {
-                }
-            }
-            for (Path tempFile : tempDepthFiles) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (IOException ignored) {
-                }
-            }
-            if (tempDir != null) {
-                try {
-                    Files.deleteIfExists(tempDir);
-                } catch (IOException ignored) {
-                }
-            }
+            // DEBUG: temp image cleanup 일시 비활성화 — /tmp/indoor-localize-* 디렉토리 보존
+            // (입력 query/depth 검증용). 운영 복귀 시 아래 블록 주석 해제 필요.
+            // for (Path tempFile : tempFiles) {
+            //     try { Files.deleteIfExists(tempFile); } catch (IOException ignored) {}
+            // }
+            // for (Path tempFile : tempDepthFiles) {
+            //     try { Files.deleteIfExists(tempFile); } catch (IOException ignored) {}
+            // }
+            // if (tempDir != null) {
+            //     try { Files.deleteIfExists(tempDir); } catch (IOException ignored) {}
+            // }
         }
     }
 
@@ -180,20 +173,19 @@ public class SlamLocalizationService implements SlamLocalizer {
     }
 
     /**
-     * Camera-frame z-axis 회전을 quaternion에 right-multiply (q' = q * q_z(angle)).
-     * SHADOW path에서 portrait↔landscape 90° 보정. translation은 그대로.
+     * Camera-frame x-axis 회전을 quaternion에 right-multiply (q' = q * q_x(angle)).
+     * SHADOW path에서 portrait→landscape 변환 (광축 기준 90°).
      */
-    @SuppressWarnings("unchecked")
-    private java.util.Map<String, Object> rotateCameraAroundZ(java.util.Map<String, Object> pose, double angleRad) {
+    private java.util.Map<String, Object> rotateCameraAroundX(java.util.Map<String, Object> pose, double angleRad) {
         if (pose == null) return pose;
         double qx = asDouble(pose.get("qx"));
         double qy = asDouble(pose.get("qy"));
         double qz = asDouble(pose.get("qz"));
         double qw = asDouble(pose.get("qw"));
-        // q_z(angle) = (0, 0, sin(angle/2), cos(angle/2))
+        // q_x(angle) = (sin(angle/2), 0, 0, cos(angle/2))
         double s = Math.sin(angleRad / 2.0);
         double c = Math.cos(angleRad / 2.0);
-        double rx = 0.0, ry = 0.0, rz = s, rw = c;
+        double rx = s, ry = 0.0, rz = 0.0, rw = c;
         // Hamilton product q' = q * r
         double nx = qw * rx + qx * rw + qy * rz - qz * ry;
         double ny = qw * ry - qx * rz + qy * rw + qz * rx;

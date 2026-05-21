@@ -20,4 +20,15 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean(name = "poiLabelerExecutor")
+    public Executor poiLabelerExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(16);
+        executor.setThreadNamePrefix("poi-label-");
+        executor.initialize();
+        return executor;
+    }
 }

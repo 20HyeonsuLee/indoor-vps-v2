@@ -15,6 +15,7 @@ import sqlite3
 import struct
 import threading
 import time
+import zlib
 from collections import OrderedDict
 from pathlib import Path
 
@@ -39,19 +40,67 @@ MIN_GLOBAL_SIMILARITY = float(os.environ.get("SLAM_CANDIDATE_MIN_SIM", "0.0"))
 #     보충. v4는 depth-direct만 써서 4% coverage라 cross-image 쿼리에서 매칭 부족.
 # v6: ORB-mediated 경로에도 LiDAR sentinel(>8m) 필터 추가 — v5는 70m 등 극단치
 #     world3d가 들어가서 RGBD/PnP RANSAC이 망가짐.
-CACHE_VERSION = 6
+# v9: tighten ARKit depth trust range from 8m to 5m for SuperPoint 3D lifting.
+# v10: when Admin.opt_poses exists, drop nodes missing optimized poses instead of
+#      falling back to raw Node.pose.
+CACHE_VERSION = 10  # v8: prefer Admin.opt_poses (LC + graph optimization) over raw Node.pose
 
 
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
 
+def _load_optimized_transforms(conn: sqlite3.Connection) -> dict[int, np.ndarray]:
+    """Return {node_id: 3x4} from Admin.opt_poses (LC + graph optimization 결과).
+
+    rtabmap 은 Admin 테이블에 zlib 으로 압축된 opt_ids (int32 array) 와 opt_poses
+    (3x4 float array per node) 를 저장한다. Multi-session 머지에서 inter-session
+    LC 가 풀어낸 정확한 pose 가 여기 들어 있고 Node.pose 는 raw odometry 그대로다.
+    """
+    try:
+        cur = conn.execute(
+            "SELECT opt_ids, opt_poses FROM Admin "
+            "WHERE opt_ids IS NOT NULL AND opt_poses IS NOT NULL "
+            "ORDER BY rowid DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        if not row:
+            return {}
+        ids_blob, poses_blob = row
+        if not ids_blob or not poses_blob:
+            return {}
+        ids_data = zlib.decompress(ids_blob)
+        poses_data = zlib.decompress(poses_blob)
+        n_ids = len(ids_data) // 4
+        n_poses = len(poses_data) // 48
+        if n_ids == 0 or n_ids != n_poses:
+            return {}
+        ids = struct.unpack('<' + 'i' * n_ids, ids_data)
+        out: dict[int, np.ndarray] = {}
+        for i, nid in enumerate(ids):
+            vals = struct.unpack('<12f', poses_data[i * 48:(i + 1) * 48])
+            if all(v == 0.0 for v in vals):
+                continue
+            out[nid] = np.array(vals, dtype=np.float64).reshape(3, 4)
+        return out
+    except (zlib.error, struct.error, sqlite3.DatabaseError):
+        return {}
+
+
 def _parse_node_transforms(conn: sqlite3.Connection) -> dict[int, np.ndarray]:
-    """Return {node_id: 3x4 world-transform matrix} from the Node table."""
-    result: dict[int, np.ndarray] = {}
+    """Return {node_id: 3x4 world-transform matrix}.
+
+    Multi-session 머지 시 raw odometry (Node.pose) 는 세션 간 drift 가 통합되지
+    않아 좌표가 어긋난다. Admin.opt_poses 의 LC + graph optimization 결과를
+    우선 사용하고, 거기에 없는 노드는 Node.pose 로 fallback.
+    """
+    optimized = _load_optimized_transforms(conn)
+    result: dict[int, np.ndarray] = dict(optimized)
     for node_id, blob in conn.execute(
         "SELECT id, pose FROM Node WHERE pose IS NOT NULL"
     ):
+        if node_id in result:
+            continue
         if not blob or len(blob) != 48:
             continue
         vals = struct.unpack('<12f', blob)
@@ -59,6 +108,27 @@ def _parse_node_transforms(conn: sqlite3.Connection) -> dict[int, np.ndarray]:
             continue
         result[node_id] = np.array(vals, dtype=np.float64).reshape(3, 4)
     return result
+
+
+def _optimized_pose_node_ids(conn: sqlite3.Connection) -> set[int]:
+    """Return node ids with Admin.opt_poses, or empty set when optimized poses are absent."""
+    try:
+        row = conn.execute(
+            "SELECT opt_ids, opt_poses FROM Admin "
+            "WHERE opt_ids IS NOT NULL AND opt_poses IS NOT NULL "
+            "ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        if not row or not row[0] or not row[1]:
+            return set()
+        ids_data = zlib.decompress(row[0])
+        poses_data = zlib.decompress(row[1])
+        n_ids = len(ids_data) // 4
+        n_poses = len(poses_data) // 48
+        if n_ids == 0 or n_ids != n_poses:
+            return set()
+        return set(struct.unpack('<' + 'i' * n_ids, ids_data))
+    except (zlib.error, struct.error, sqlite3.DatabaseError):
+        return set()
 
 
 def _load_world_features(
@@ -149,7 +219,11 @@ def _load_gray_float(conn: sqlite3.Connection, node_id: int) -> np.ndarray | Non
 
 # iOS LiDAR 실용 최대치(~6m) 보다 큰 값은 ARKit 의 "no data" sentinel — RVL uint16 mm으로
 # 인코딩하면 30-65m 영역이 됨. 실제 depth 측정이 아니므로 NaN 처리.
-_LIDAR_MAX_VALID_M = 8.0
+_LIDAR_MAX_VALID_M = 5.0
+# ARKit confidenceMap 임계값. 클라가 0/50/100 로 보낸다 (Low/Med/High).
+# Med 이상만 통과. 0 으로 두면 confidence 필터 비활성.
+# rtabmap-export 의 --depth_confidence 50 옵션과 일치.
+_LIDAR_MIN_CONFIDENCE = 50
 
 # librtabmap_core.so 의 rtabmap::RvlCodec::DecompressRVL 을 ctypes 로 호출 (mangled name).
 # Pure-Python 디코더보다 ~50x 빠르고 C++ 구현과 bit-exact 동일.
@@ -305,12 +379,62 @@ def decode_depth_meters(depth_blob) -> np.ndarray | None:
     return depth_m
 
 
+def decode_confidence_map(conf_blob, target_shape: tuple[int, int] | None = None) -> np.ndarray | None:
+    """ARKit confidenceMap blob → (H, W) uint8 (0/50/100 또는 0/1/2 scale).
+
+    클라가 보내는 인코딩 형식이 명세되지 않아 방어적으로 시도:
+      1) PNG / JPEG 등 이미지 코덱 (uint8 grayscale).
+      2) Raw uint8 buffer — 알려진 LiDAR 해상도(192x256 등) 매치.
+
+    target_shape 가 주어지면 그 해상도로 리사이즈/매치 시도.
+    """
+    if not conf_blob:
+        return None
+    raw = bytes(conf_blob)
+    # (1) Image codec (PNG/JPEG/...) — opencv 가 알아서 디코드.
+    arr_u8 = np.frombuffer(raw, dtype=np.uint8)
+    img = cv2.imdecode(arr_u8, cv2.IMREAD_UNCHANGED)
+    if img is not None and img.dtype == np.uint8 and img.ndim == 2:
+        return img
+    # (2) Raw uint8 buffer.
+    n = len(raw)
+    if target_shape is not None and target_shape[0] * target_shape[1] == n:
+        return np.frombuffer(raw, dtype=np.uint8).reshape(target_shape).copy()
+    for h, w in ((192, 256), (256, 192), (180, 240), (240, 180)):
+        if h * w == n:
+            return np.frombuffer(raw, dtype=np.uint8).reshape(h, w).copy()
+    return None
+
+
+def _apply_confidence_mask(depth_m: np.ndarray, conf: np.ndarray | None) -> np.ndarray:
+    """confidence < _LIDAR_MIN_CONFIDENCE 픽셀을 NaN 으로. shape mismatch 시 컨피던스 무시."""
+    if _LIDAR_MIN_CONFIDENCE <= 0 or conf is None:
+        return depth_m
+    if conf.shape != depth_m.shape:
+        # 클라가 다른 해상도로 보냈을 때 — 일치 안 하면 안전하게 무시.
+        return depth_m
+    depth_m = depth_m.copy()
+    depth_m[conf < _LIDAR_MIN_CONFIDENCE] = np.nan
+    return depth_m
+
+
 def _load_depth_meters(conn: sqlite3.Connection, node_id: int) -> np.ndarray | None:
-    """Load LiDAR depth image as (H, W) float32 meters from rtabmap.db Data table."""
-    row = conn.execute("SELECT depth FROM Data WHERE id = ?", (node_id,)).fetchone()
+    """Load LiDAR depth image as (H, W) float32 meters from rtabmap.db Data table.
+
+    depth_confidence 컬럼이 있고 디코드 가능하면 신뢰도 낮은 픽셀(< _LIDAR_MIN_CONFIDENCE)
+    을 NaN 처리. 컬럼 없거나 디코드 실패 시 depth 그대로 반환 (BC 유지).
+    """
+    row = conn.execute(
+        "SELECT depth, depth_confidence FROM Data WHERE id = ?", (node_id,)
+    ).fetchone()
     if not row or not row[0]:
         return None
-    return decode_depth_meters(bytes(row[0]))
+    depth_m = decode_depth_meters(bytes(row[0]))
+    if depth_m is None:
+        return None
+    conf_blob = row[1] if len(row) > 1 else None
+    conf = decode_confidence_map(conf_blob, target_shape=depth_m.shape) if conf_blob else None
+    return _apply_confidence_mask(depth_m, conf)
 
 
 _C_RTAB_TO_OPENCV = np.array(
@@ -710,6 +834,17 @@ class SuperPointLoadedMap:
             ).fetchall()]
 
             transforms = _parse_node_transforms(conn)
+            opt_node_ids = _optimized_pose_node_ids(conn)
+            if opt_node_ids:
+                before_count = len(all_ids)
+                all_ids = [node_id for node_id in all_ids if node_id in opt_node_ids]
+                dropped_count = before_count - len(all_ids)
+                if dropped_count:
+                    logger.info(
+                        "[SuperPoint] '%s': dropped %d frames without optimized pose",
+                        self.map_id,
+                        dropped_count,
+                    )
 
             # Read K from any node's calibration blob (assume constant intrinsics
             # across the scan — single camera, no zoom).
@@ -1170,6 +1305,7 @@ class SuperPointLoadedMap:
     ) -> list[int]:
         """Return top-K node IDs by cosine similarity of mean descriptors."""
         return [node_id for node_id, _ in self.top_k_candidate_scores(q_desc_mean, k)]
+
 
 # ---------------------------------------------------------------------------
 # Singleton manager

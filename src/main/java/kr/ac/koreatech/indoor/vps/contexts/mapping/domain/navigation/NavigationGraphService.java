@@ -47,11 +47,11 @@ public class NavigationGraphService {
             DefaultWeightedEdge graphEdge = graph.addEdge(edge.fromId(), edge.toId());
             if (graphEdge == null) {
                 graphEdge = graph.getEdge(edge.fromId(), edge.toId());
-                if (graphEdge == null || graph.getEdgeWeight(graphEdge) <= edge.lengthM()) {
+                if (graphEdge == null || graph.getEdgeWeight(graphEdge) <= edge.costM()) {
                     continue;
                 }
             }
-            graph.setEdgeWeight(graphEdge, edge.lengthM());
+            graph.setEdgeWeight(graphEdge, edge.costM());
             edgeByGraphEdge.put(graphEdge, edge);
         }
 
@@ -76,6 +76,8 @@ public class NavigationGraphService {
             }
             routeEdges.addLast(edge);
         }
-        return new RouteResult(List.copyOf(routeNodes), List.copyOf(routeEdges), path.getWeight());
+        List<RouteEdge> resultEdges = List.copyOf(routeEdges);
+        double totalDistance = resultEdges.stream().mapToDouble(RouteEdge::lengthM).sum();
+        return new RouteResult(List.copyOf(routeNodes), resultEdges, totalDistance, path.getWeight());
     }
 }

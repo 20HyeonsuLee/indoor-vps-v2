@@ -12,6 +12,7 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeCont
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.PoiLabeler;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader.RtabmapGraphReadException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
@@ -43,6 +44,7 @@ public class BuildJobRunner {
     private final TransactionTemplate transactionTemplate;
     private final BuildGraphPersister graphPersister;
     private final PythonBridge pythonBridge;
+    private final PoiLabeler poiLabeler;
     private final String workerId = "spring-build-worker-" + UUID.randomUUID();
 
     public BuildJobRunner(
@@ -54,7 +56,8 @@ public class BuildJobRunner {
             IndoorProperties properties,
             TransactionTemplate transactionTemplate,
             BuildGraphPersister graphPersister,
-            PythonBridge pythonBridge
+            PythonBridge pythonBridge,
+            PoiLabeler poiLabeler
     ) {
         this.buildJobRepository = buildJobRepository;
         this.scanIngestRepository = scanIngestRepository;
@@ -65,6 +68,7 @@ public class BuildJobRunner {
         this.transactionTemplate = transactionTemplate;
         this.graphPersister = graphPersister;
         this.pythonBridge = pythonBridge;
+        this.poiLabeler = poiLabeler;
     }
 
     @Scheduled(fixedDelayString = "${indoor.build-worker.poll-interval-ms:2000}")
@@ -113,7 +117,10 @@ public class BuildJobRunner {
             transactionTemplate.executeWithoutResult(
                     status -> graphPersister.persistSuccess(buildJobId, input.scanId(), input.dbPath(), reprocess, metadata)
             );
-            exportPointcloudQuietly(input.scanId(), input.dbPath());
+            exportPointcloudQuietly(input.scanId(), graphDbPath);
+            // 빌드 성공 직후 fire-and-forget 으로 POI 라벨러 트리거.
+            // poiLabeler.isEnabled() = false 면 어댑터 안에서 즉시 return.
+            poiLabeler.labelScan(input.scanId());
         } catch (BuildInputException | RtabmapGraphReadException e) {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
         } catch (RtabmapReprocessException e) {

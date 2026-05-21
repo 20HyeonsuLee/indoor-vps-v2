@@ -1,8 +1,11 @@
 package kr.ac.koreatech.indoor.vps.contexts.mapping.application.floor;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorAreaEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.FloorEntity;
@@ -24,17 +27,20 @@ public class FloorQueryService {
     private final FloorAreaRepository floorAreaRepository;
     private final FloorScanRepository floorScanRepository;
     private final MapNodeRepository mapNodeRepository;
+    private final IndoorProperties properties;
 
     public FloorQueryService(
             FloorRepository floorRepository,
             FloorAreaRepository floorAreaRepository,
             FloorScanRepository floorScanRepository,
-            MapNodeRepository mapNodeRepository
+            MapNodeRepository mapNodeRepository,
+            IndoorProperties properties
     ) {
         this.floorRepository = floorRepository;
         this.floorAreaRepository = floorAreaRepository;
         this.floorScanRepository = floorScanRepository;
         this.mapNodeRepository = mapNodeRepository;
+        this.properties = properties;
     }
 
     public FloorEntity requireFloor(UUID floorId) {
@@ -82,10 +88,26 @@ public class FloorQueryService {
                 floor.getLevel(),
                 floor.getHeight(),
                 scanId != null && mapNodeRepository.existsByScanIdAndStaleFalse(scanId),
-                false,
+                active.map(this::hasPly).orElse(false),
                 scanId,
                 floor.getCreatedAt(),
                 floor.getUpdatedAt()
         );
+    }
+
+    private boolean hasPly(FloorScanEntity floorScan) {
+        String storagePath = floorScan.getScan().getStoragePath();
+        if (storagePath == null || storagePath.isBlank()) {
+            return false;
+        }
+        Path path = Path.of(storagePath);
+        if (!path.isAbsolute()) {
+            path = properties.getStorageRoot().resolve(path);
+        }
+        Path fileName = path.getFileName();
+        Path scanDir = fileName != null && "rtabmap.db".equals(fileName.toString())
+                ? path.getParent()
+                : path;
+        return scanDir != null && Files.isRegularFile(scanDir.resolve("cloud.ply"));
     }
 }
