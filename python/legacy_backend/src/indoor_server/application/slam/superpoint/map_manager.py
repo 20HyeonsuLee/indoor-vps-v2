@@ -209,6 +209,8 @@ class SuperPointLoadedMap:
         self.keyframe_feats: dict[int, dict] = {}
         # (N, 3) world 3D per keyframe keypoint; NaN where unavailable
         self.keyframe_world3d: dict[int, np.ndarray] = {}
+        # 3x4 RTABMap keyframe pose matrix per node_id.
+        self.keyframe_poses: dict[int, np.ndarray] = {}
         # (K, 384) DINOv2 global descriptors
         self.global_descs: torch.Tensor | None = None
 
@@ -272,6 +274,7 @@ class SuperPointLoadedMap:
 
         frame_ids: list[int] = [int(x) for x in meta["frame_ids"]]
         self.node_ids = frame_ids
+        self._load_keyframe_poses_from_db(frame_ids)
 
         for i, nid in enumerate(frame_ids):
             start = int(offsets[i])
@@ -296,6 +299,26 @@ class SuperPointLoadedMap:
             len(frame_ids),
         )
         return True
+
+    def _load_keyframe_poses_from_db(self, frame_ids: list[int]) -> None:
+        """Load lightweight Node.pose matrices even when feature cache is reused."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            try:
+                transforms = _parse_node_transforms(conn)
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.warning("[SuperPoint] keyframe pose load failed: %s", exc)
+            self.keyframe_poses = {}
+            return
+
+        wanted = set(frame_ids)
+        self.keyframe_poses = {
+            int(nid): np.array(T, dtype=np.float64)
+            for nid, T in transforms.items()
+            if int(nid) in wanted
+        }
 
     def _save_cache(self) -> None:
         """Persist feature index to disk as raw .npy + meta.json."""
@@ -394,6 +417,10 @@ class SuperPointLoadedMap:
                 cpu = {k: v.cpu() for k, v in feats.items()}
                 self.keyframe_feats[node_id] = cpu
                 self.node_ids.append(node_id)
+                if node_id in transforms:
+                    self.keyframe_poses[node_id] = np.array(
+                        transforms[node_id], dtype=np.float64
+                    )
 
                 # DINOv2 global descriptor (384-dim) instead of mean SuperPoint (256-dim)
                 img_uint8 = (img * 255).clip(0, 255).astype(np.uint8)
