@@ -200,6 +200,34 @@ public class SlamLocalizationService implements SlamLocalizer {
         return out;
     }
 
+    /**
+     * Camera-frame y-axis 회전을 quaternion에 right-multiply (q' = q * q_y(angle)).
+     * R_x(+π/2) 적용 후 frame의 +Y = "user up" 이므로 이 축 기준 회전 = yaw 보정.
+     */
+    private java.util.Map<String, Object> rotateCameraAroundY(java.util.Map<String, Object> pose, double angleRad) {
+        if (pose == null) return pose;
+        double qx = asDouble(pose.get("qx"));
+        double qy = asDouble(pose.get("qy"));
+        double qz = asDouble(pose.get("qz"));
+        double qw = asDouble(pose.get("qw"));
+        // q_y(angle) = (0, sin(angle/2), 0, cos(angle/2))
+        double s = Math.sin(angleRad / 2.0);
+        double c = Math.cos(angleRad / 2.0);
+        double rx = 0.0, ry = s, rz = 0.0, rw = c;
+        // Hamilton product q' = q * r
+        double nx = qw * rx + qx * rw + qy * rz - qz * ry;
+        double ny = qw * ry - qx * rz + qy * rw + qz * rx;
+        double nz = qw * rz + qx * ry - qy * rx + qz * rw;
+        double nw = qw * rw - qx * rx - qy * ry - qz * rz;
+        if (nw < 0) { nx = -nx; ny = -ny; nz = -nz; nw = -nw; }
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(pose);
+        out.put("qx", nx);
+        out.put("qy", ny);
+        out.put("qz", nz);
+        out.put("qw", nw);
+        return out;
+    }
+
     private static double asDouble(Object v) {
         return v instanceof Number n ? n.doubleValue() : 0.0;
     }

@@ -71,11 +71,35 @@ public class SlamLocalizationFacade {
             responderSnapshot = new ResultSnapshot(result, System.currentTimeMillis() - t0, null);
         } catch (RuntimeException e) {
             responderSnapshot = new ResultSnapshot(null, System.currentTimeMillis() - t0, e.getMessage());
-            fireSecondary(command, requestId, responderSnapshot, secondary, responderLabel, secondaryLabel);
-            throw e;
+            return fallbackToSecondary(command, requestId, responderSnapshot, secondary, responderLabel, secondaryLabel, e);
         }
         fireSecondary(command, requestId, responderSnapshot, secondary, responderLabel, secondaryLabel);
         return result;
+    }
+
+    private SLAMLocalizeResult fallbackToSecondary(
+            LocalizeCommand command,
+            String requestId,
+            ResultSnapshot responderSnapshot,
+            SlamLocalizer secondary,
+            String responderLabel,
+            String secondaryLabel,
+            RuntimeException original
+    ) {
+        long t0 = System.currentTimeMillis();
+        try {
+            SLAMLocalizeResult fallback = secondary.localize(command);
+            ResultSnapshot secondarySnapshot = new ResultSnapshot(fallback, System.currentTimeMillis() - t0, null);
+            log.info("[localize] responder={} failed; fallback={} floor={}",
+                    responderLabel, secondaryLabel, command.floorId());
+            appendShadowLog(command, requestId, responderSnapshot, secondarySnapshot);
+            return fallback;
+        } catch (RuntimeException secondaryError) {
+            ResultSnapshot secondarySnapshot = new ResultSnapshot(null, System.currentTimeMillis() - t0,
+                    secondaryError.getMessage());
+            appendShadowLog(command, requestId, responderSnapshot, secondarySnapshot);
+            throw original;
+        }
     }
 
     private boolean shouldUseShadowAsPrimary(LocalizeCommand command) {
@@ -121,6 +145,15 @@ public class SlamLocalizationFacade {
             secondarySnapshot = new ResultSnapshot(null, System.currentTimeMillis() - t0, e.getMessage());
         }
         log.info("[localize] responder={} secondary={} floor={}", responderLabel, secondaryLabel, command.floorId());
+        appendShadowLog(command, requestId, responderSnapshot, secondarySnapshot);
+    }
+
+    private void appendShadowLog(
+            LocalizeCommand command,
+            String requestId,
+            ResultSnapshot responderSnapshot,
+            ResultSnapshot secondarySnapshot
+    ) {
         DiffSnapshot diff = computeDiff(responderSnapshot.result(),
                 secondarySnapshot.result() == null ? null : secondarySnapshot.result());
         int depthCount = command.depths() == null ? 0 : (int) command.depths().stream().filter(d -> d != null).count();

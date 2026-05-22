@@ -8,6 +8,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -19,6 +20,8 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeCont
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessResult;
@@ -28,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -128,6 +132,83 @@ public class V2ScanAdminController {
         return body;
     }
 
+    @PostMapping("/{scanId}/merge-v2")
+    public Map<String, Object> mergeV2(
+            @PathVariable UUID scanId,
+            @RequestParam(value = "areaId", required = false) UUID areaId,
+            @RequestBody V2MergeRequest request
+    ) {
+        if (request == null || request.sourcePaths() == null || request.sourcePaths().size() < 2) {
+            throw new ClientApiException(HttpStatus.BAD_REQUEST, "V2_MERGE_REQUIRES_SOURCES",
+                    "sourcePaths must contain at least two RTAB-Map db files.");
+        }
+        Path scanDir = properties.getStorageRoot().resolve("scans").resolve(scanId.toString());
+        Path v2Dir = scanDir.resolve("v2");
+        try {
+            Files.createDirectories(v2Dir);
+        } catch (java.io.IOException e) {
+            throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "V2_MERGE_DIR_FAILED", e.getMessage());
+        }
+        UUID floorId = areaIdToFloorId(areaId);
+        int rows = registerScanIfMissing(scanId, areaId);
+        log.info("[v2-merge] auto-registered scan rows affected={}", rows);
+
+        MergeScanBridgeResponse merge = bridge.mergeScan(new MergeScanBridgeRequest(
+                floorId,
+                scanId,
+                request.sourcePaths(),
+                v2Dir.toAbsolutePath().toString()
+        ));
+
+        Path mergedDb = Path.of(merge.mergedDbPath());
+        Path reprocessedDb = v2Dir.resolve("rtabmap_reprocessed.db");
+        Path indexDb = Files.exists(reprocessedDb) ? reprocessedDb : mergedDb;
+        if (!Files.exists(indexDb)) {
+            throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "V2_MERGE_OUTPUT_MISSING",
+                    "merged db not found: " + indexDb);
+        }
+
+        BuildSuperpointIndexResponse indexResult = bridge.buildSuperpointIndex(
+                new BuildSuperpointIndexRequest(scanId.toString(), indexDb.toAbsolutePath().toString())
+        );
+
+        Path cloudPath = v2Dir.resolve("cloud.ply");
+        ExportPointcloudResponse cloud = null;
+        try {
+            cloud = bridge.exportPointcloud(new ExportPointcloudRequest(
+                    scanId.toString(),
+                    indexDb.toAbsolutePath().toString(),
+                    cloudPath.toAbsolutePath().toString()
+            ));
+            log.info("[v2-merge-cloud] {} points={} bytes={} elapsed={}ms",
+                    cloudPath, cloud.pointCount(), cloud.fileSize(), cloud.elapsedMs());
+        } catch (RuntimeException e) {
+            log.warn("[v2-merge-cloud] export failed (continuing): {}", e.getMessage());
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("scanId", scanId.toString());
+        body.put("v2DbPath", indexDb.toString());
+        body.put("mergedDbPath", merge.mergedDbPath());
+        body.put("mergedBytes", merge.fileSize());
+        body.put("mergedSha256", merge.sha256());
+        body.put("mergeDiagnostics", merge.diagnostics());
+        body.put("indexFrameCount", indexResult.frameCount());
+        body.put("indexTotalKeypoints", indexResult.totalKeypoints());
+        body.put("indexBytes", indexResult.bytes());
+        body.put("indexElapsedMs", indexResult.elapsedMs());
+        if (cloud != null) {
+            body.put("cloudPath", cloud.plyPath());
+            body.put("cloudPointCount", cloud.pointCount());
+            body.put("cloudBytes", cloud.fileSize());
+            body.put("cloudElapsedMs", cloud.elapsedMs());
+        }
+        return body;
+    }
+
+    public record V2MergeRequest(List<String> sourcePaths) {
+    }
+
     /**
      * scan_ingest + floor_scan + build_job row를 보강. ON CONFLICT DO NOTHING이라
      * 이미 정상 등록된 scan에 호출해도 부작용 0.
@@ -209,6 +290,19 @@ public class V2ScanAdminController {
                 String s = rs.getString(1);
                 return s == null ? Optional.empty() : Optional.of(UUID.fromString(s));
             }
+        }
+    }
+
+    private UUID areaIdToFloorId(UUID areaId) {
+        if (areaId == null) {
+            throw new ClientApiException(HttpStatus.BAD_REQUEST, "AREA_ID_REQUIRED",
+                    "areaId is required for v2 merge.");
+        }
+        try (Connection c = dataSource.getConnection()) {
+            return findFloorId(c, areaId).orElseThrow(() -> new ClientApiException(
+                    HttpStatus.NOT_FOUND, "AREA_NOT_FOUND", "area not found: " + areaId));
+        } catch (SQLException e) {
+            throw new ClientApiException(HttpStatus.INTERNAL_SERVER_ERROR, "AREA_LOOKUP_FAILED", e.getMessage());
         }
     }
 

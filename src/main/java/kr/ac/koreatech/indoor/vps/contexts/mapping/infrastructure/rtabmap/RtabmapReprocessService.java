@@ -93,14 +93,18 @@ public class RtabmapReprocessService implements RtabmapReprocessor {
         Path stderrLog = inputDb.getParent().resolve("rtabmap_reprocess.stderr.log");
         List<String> command = List.of(
                 binary.get().toString(),
-                "--Kp/DetectorStrategy=1",
-                "--Vis/FeatureType=1",
-                "--Mem/ImagePreDecimation=1",
+                "--Kp/DetectorStrategy",
+                "1",
+                "--Vis/FeatureType",
+                "1",
+                "--Mem/ImagePreDecimation",
+                "1",
                 // DepthAsMask=true(default)는 depth invalid 픽셀의 feature를 컷.
                 // 우리는 5m masking + ARKit raw로 valid depth가 8%대라 SURF 풀이 너무
                 // sparse → LC hypothesis는 잡혀도 transform RANSAC이 inlier 부족으로
                 // 다 reject(Total LC=0). false로 풀어 RGB 전체에서 feature 추출.
-                "--Mem/DepthAsMask=false",
+                "--Mem/DepthAsMask",
+                "false",
                 inputDb.toString(),
                 outputDb.toString()
         );

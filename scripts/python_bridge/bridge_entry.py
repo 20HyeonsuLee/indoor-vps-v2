@@ -44,6 +44,10 @@ class BridgeRuntimeError(RuntimeError):
         self.detail = detail or {}
 
 
+def _rtabmap_param(name: str, value: object) -> list[str]:
+    return [f"--{name}", str(value)]
+
+
 def configure_logging(enabled: bool) -> None:
     if not enabled:
         logging.basicConfig(level=logging.CRITICAL, force=True)
@@ -186,6 +190,20 @@ def validate_merge_scan(payload: dict[str, object]) -> None:
     require_string(payload, "scanId")
     require_string(payload, "outputDir")
     require_string_list(payload, "sourcePaths", min_items=1)
+    if "nativeSuperpointEnabled" in payload and not isinstance(
+        payload["nativeSuperpointEnabled"], bool
+    ):
+        raise BridgeContractError(
+            "nativeSuperpointEnabled must be a boolean",
+            {"field": "nativeSuperpointEnabled"},
+        )
+    if "nativeLightGlueEnabled" in payload and not isinstance(
+        payload["nativeLightGlueEnabled"], bool
+    ):
+        raise BridgeContractError(
+            "nativeLightGlueEnabled must be a boolean",
+            {"field": "nativeLightGlueEnabled"},
+        )
 
 
 def require_string(payload: dict[str, object], key: str) -> str:
@@ -339,6 +357,13 @@ def merge_scan(payload: dict[str, object]) -> dict[str, object]:
     return asyncio.run(merge_scan_async(payload))
 
 
+def _source_scan_id(path: Path, index: int, duplicate_parent_names: bool) -> str:
+    if not duplicate_parent_names:
+        return path.parent.name
+    safe_stem = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in path.stem)
+    return f"source_{index:02d}_{safe_stem}"
+
+
 async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
     if len(payload["sourcePaths"]) < 2:
         raise BridgeRuntimeError(
@@ -349,9 +374,15 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
     output_dir = Path(str(payload["outputDir"]))
     output_db = output_dir / "rtabmap.db"
     work_dir = output_dir / "_merge_work"
+    source_paths = [Path(path) for path in payload["sourcePaths"]]
+    parent_names = [path.parent.name for path in source_paths]
+    duplicate_parent_names = len(set(parent_names)) != len(parent_names)
     sources = [
-        source_class(scan_id=Path(path).parent.name, db_path=Path(path))
-        for path in payload["sourcePaths"]
+        source_class(
+            scan_id=_source_scan_id(path, index, duplicate_parent_names),
+            db_path=path,
+        )
+        for index, path in enumerate(source_paths)
     ]
     runner = runner_class()
     if not runner.is_available():
@@ -359,12 +390,32 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
             "RTABMAP_REPROCESS_UNAVAILABLE",
             "rtabmap-reprocess binary not available",
         )
+
+    sp_enabled = bool(payload.get("nativeSuperpointEnabled", False))
+    lg_enabled = bool(payload.get("nativeLightGlueEnabled", sp_enabled))
+    sp_model_path = str(payload.get("superpointModelPath") or "/data/models/superpoint_v1.pt")
+    if sp_enabled:
+        params = params_class(
+            superpoint_enabled=True,
+            superpoint_model_path=sp_model_path,
+            lightglue_enabled=lg_enabled,
+        )
+    else:
+        params = params_class()
+    logger.info(
+        "merge_scan params feature_strategy=%s superpoint_enabled=%s lightglue_enabled=%s model=%s",
+        11 if sp_enabled else params.feature_strategy,
+        sp_enabled,
+        lg_enabled if sp_enabled else False,
+        sp_model_path if sp_enabled else "(unused)",
+    )
+
     try:
         result = await runner.run(
             sources=sources,
             output_db=output_db,
             work_dir=work_dir,
-            params=params_class(),
+            params=params,
             timeout_s=float(payload.get("timeoutSeconds") or 900.0),
         )
     except merge_error_class as exc:
@@ -384,16 +435,38 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
         input_db=output_db,
         output_db=reprocessed_db,
         timeout_s=float(payload.get("timeoutSeconds") or 900.0),
+        superpoint_enabled=sp_enabled,
+        lightglue_enabled=lg_enabled,
+        superpoint_model_path=sp_model_path,
     )
 
     # Stage 3: cross-session link로부터 SE(3) yaw-only alignment 추정 후
     # sub-map B 노드 pose를 직접 patch. rtabmap이 graph optimization으로
     # 풀지 못하는 sub-map 정렬을 후처리로 강제한다.
+    #
+    # **3+ source 머지에서는 비활성화** — multiscan_alignment 는 2-source 가정으로
+    # 작성됨 (한 reference sub-map vs 한 다른 sub-map). N-source 머지 시:
+    #   - reference (map_id=0) 와 직접 cross-LC 부족한 sub-map (예: map3, map4)
+    #     은 RANSAC inlier 부족으로 patch skip
+    #   - reference 와 cross-LC 풍부한 sub-map (예: map1, map2) 만 patch 적용
+    #   → graph 의 sub-map 들 사이 frame consistency 깨짐 (일부는 patched,
+    #      일부는 chain merge 그대로). admin opt_poses 가 sub-map 마다 다른 frame.
+    #   → 측위 시 매칭되는 sub-map 에 따라 응답 pose 의 frame 점프 (false match
+    #      jump 원인).
+    # 안전을 위해 3+ source 머지에선 skip. chain merge 의 graph 일관성 보존.
+    # Drift 해소는 SPINE session 추가 또는 detectMoreLoopClosures refinement 로.
     pose_source_db = reprocessed_db if reprocessed_db.exists() else output_db
-    alignment_diag = _align_submaps(pose_source_db)
+    if len(source_paths) >= 3:
+        alignment_diag = {
+            "status": "skipped",
+            "reason": "submap_alignment is 2-source-only; 3+ sources cause frame inconsistency across patched/non-patched sub-maps",
+            "source_count": len(source_paths),
+        }
+    else:
+        alignment_diag = _align_submaps(pose_source_db)
 
     metadata_diag = _merge_metadata_alongside(
-        source_paths=[Path(p) for p in payload["sourcePaths"]],
+        source_paths=source_paths,
         merged_rtabmap_db=pose_source_db,
         output_dir=output_dir,
     )
@@ -416,6 +489,9 @@ async def _post_merge_reprocess(
     input_db: Path,
     output_db: Path,
     timeout_s: float,
+    superpoint_enabled: bool = False,
+    lightglue_enabled: bool = False,
+    superpoint_model_path: str = "/data/models/superpoint_v1.pt",
 ) -> dict[str, object]:
     """단일 DB로 rtabmap-reprocess를 한 번 더 돌려 cross-map closure를 확보.
 
@@ -434,29 +510,46 @@ async def _post_merge_reprocess(
     # `-a`/source 분리 없이 단일 DB 입력으로 호출. 머지 시 적용한 loop-closure
     # 친화 옵션을 그대로 유지(통일 후 graph optimization을 다시 돌리는 게 목적).
     # Robust + Gravity 옵션은 머지된 graph를 한 번 더 다듬는 데도 유효.
+    feature_strategy = 11 if superpoint_enabled else 1
     command = [
         binary_path,
-        "--Kp/DetectorStrategy=1",
-        "--Vis/FeatureType=1",
-        "--Mem/RehearsalSimilarity=0.6",
-        "--Mem/NotLinkedNodesKept=true",
-        "--Mem/InitWMWithAllNodes=true",
-        "--Mem/STMSize=30",
-        "--Rtabmap/LoopThr=0.05",
-        "--Rtabmap/DetectionRate=0.0",
-        "--Vis/MinInliers=12",
-        "--RGBD/OptimizeMaxError=50.0",
-        "--RGBD/ProximityBySpace=true",
-        "--RGBD/ProximityMaxGraphDepth=0",
-        "--Optimizer/Iterations=200",
-        "--Optimizer/Strategy=2",
-        "--Optimizer/Robust=false",
-        "--Mem/UseOdomGravity=true",
-        "--Optimizer/GravitySigma=0.3",
-        "--uwarn",
-        str(input_db),
-        str(output_db),
+        *_rtabmap_param("Kp/DetectorStrategy", feature_strategy),
+        *_rtabmap_param("Vis/FeatureType", feature_strategy),
+        *_rtabmap_param("Mem/RehearsalSimilarity", 0.6),
+        *_rtabmap_param("Mem/NotLinkedNodesKept", "true"),
+        *_rtabmap_param("Mem/InitWMWithAllNodes", "true"),
+        *_rtabmap_param("Mem/STMSize", 30),
+        *_rtabmap_param("Rtabmap/LoopThr", 0.05),
+        *_rtabmap_param("Rtabmap/DetectionRate", 0.0),
+        *_rtabmap_param("Vis/MinInliers", 12),
+        *_rtabmap_param("Vis/BundleAdjustment", 0),
+        *_rtabmap_param("RGBD/OptimizeMaxError", 50.0),
+        *_rtabmap_param("RGBD/ProximityBySpace", "true"),
+        *_rtabmap_param("RGBD/ProximityMaxGraphDepth", 0),
+        *_rtabmap_param("Optimizer/Iterations", 200),
+        *_rtabmap_param("Optimizer/Strategy", 2),
+        *_rtabmap_param("Optimizer/Robust", "false"),
+        *_rtabmap_param("Mem/UseOdomGravity", "true"),
+        *_rtabmap_param("Optimizer/GravitySigma", 0.3),
     ]
+    if superpoint_enabled:
+        command.extend([
+            *_rtabmap_param("SuperPoint/ModelPath", superpoint_model_path),
+            *_rtabmap_param("SuperPoint/Cuda", "true"),
+            *_rtabmap_param("SuperPoint/Threshold", 0.010),
+            *_rtabmap_param("SuperPoint/NMSRadius", 4),
+            *_rtabmap_param("SuperPoint/NMS", "true"),
+            *_rtabmap_param("RGBD/LoopClosureReextractFeatures", "true"),
+            *_rtabmap_param("Mem/UseOdomFeatures", "false"),
+        ])
+    if lightglue_enabled:
+        command.extend([
+            *_rtabmap_param("Vis/CorNNType", 6),
+            *_rtabmap_param("PyMatcher/Path", "/app/scripts/rtabmap_lightglue.py"),
+            *_rtabmap_param("PyMatcher/Cuda", "true"),
+            *_rtabmap_param("PyMatcher/Threshold", 0.1),
+        ])
+    command.extend(["--uwarn", str(input_db), str(output_db)])
     proc = await asyncio.create_subprocess_exec(
         *command,
         stdout=asyncio.subprocess.PIPE,
@@ -705,20 +798,17 @@ async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, objec
         # graph-optimized pose 활용 (default 0은 재최적화 시도. 우리는 이미
         # optimization 완료된 결과 사용해 일관성 유지).
         "--opt", "2",
-        # decimation 1 = depth image 전체 픽셀 사용 (default 4는 1/4 down → 디테일 손실).
-        "--decimation", "1",
-        # 10cm voxel. 시각화 부담 줄이는 우선.
-        "--voxel", "0.10",
-        # ARKit sceneDepth 신뢰 범위 5m (≥6m는 노이즈 폭증).
-        "--max_range", "5",
-        # noise filter — RGBA depth가 마스킹 후 sparse(valid 13%)면 PCL KDTree에
-        # NaN 들어가 export 자체가 assertion fail. 일단 비활성.
-        "--noise_radius", "0",
-        "--noise_k", "0",
-        # ARKit confidenceMap (Low=0/Med=50/High=100) 임계치. 클라가 depth_confidence를
-        # 보내기 시작하면 신뢰도 50 미만 픽셀이 자동 컷되어 노이즈가 더 깎임.
-        # depth_confidence 칼럼이 NULL인 기존 scan은 이 옵션이 무시되므로 BC 유지.
-        "--depth_confidence", "50",
+        # decimation 8 = depth image 1/8 downsample (시각화 부담 추가 감소).
+        "--decimation", "8",
+        # 30cm voxel. point 수 ~1/2 추가 감소 (115K → ~50K 목표).
+        "--voxel", "0.30",
+        # ARKit sceneDepth 신뢰 범위 4m (5m → 4m, 먼 영역 노이즈 컷).
+        "--max_range", "4",
+        # noise filter — 더 강한 outlier 제거 (radius 40cm 안에 ≥8 neighbor 요구).
+        "--noise_radius", "0.40",
+        "--noise_k", "8",
+        # ARKit confidenceMap 임계치 70 (50 → 70, 더 confident depth 만).
+        "--depth_confidence", "70",
         "--output", "cloud",
         "--output_dir", str(work_dir),
         str(db_path),
@@ -862,7 +952,11 @@ def prepend_sys_path(path: Path) -> None:
 
 
 def requested_ml_device() -> str:
-    return os.environ.get("INDOOR_ML_DEVICE", "cpu").strip().lower() or "cpu"
+    return (
+        os.environ.get("INDOOR_ML_DEVICE")
+        or os.environ.get("PYTHON_ML_DEVICE")
+        or "cpu"
+    ).strip().lower() or "cpu"
 
 
 def read_image_bytes(image_paths: list[str]) -> list[bytes]:

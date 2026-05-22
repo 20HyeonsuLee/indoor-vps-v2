@@ -14,6 +14,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       PYTHON_ML_DEVICE: "${PYTHON_ML_DEVICE:-cuda}"
+      INDOOR_ML_DEVICE: "${PYTHON_ML_DEVICE:-cuda}"
     volumes:
       - app-storage:/data/storage
     deploy:

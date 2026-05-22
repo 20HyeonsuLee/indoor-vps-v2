@@ -38,7 +38,7 @@ public class IndoorProperties {
         private String device = "cpu";
         private long timeoutSeconds = 60;
         private long buildSuperpointIndexTimeoutSeconds = 600;
-        private long mergeScanTimeoutSeconds = 900;
+        private long mergeScanTimeoutSeconds = 7200;  // 120 min (안전 마진 + 큰 머지 대응)
         private Daemon daemon = new Daemon();
 
         public boolean isEnabled() { return enabled; }
