@@ -1,0 +1,131 @@
+# prompt-word 인덱스. MS Word 문서 작성 SSOT.
+# _conventions / _workflows 값은 prompt-word/conventions/<path> 또는 prompt-word/workflows/<name>을 가리킴 (`.md` 생략).
+
+# 작업 영역별 convention/workflow 매트릭스
+document_design/:
+  _: "전체 문서 설계 (목적·독자·범위·종류·구조)"
+  _conventions: [structure/document, structure/heading]
+  _workflows: [plan]
+
+paragraph_writing/:
+  _: "본문 단락 작성"
+  _conventions: [content/paragraph, writing/writing, quality/consistency]
+  _workflows: [draft]
+
+list_authoring/:
+  _conventions: [content/list]
+
+table_authoring/:
+  _conventions: [content/table]
+
+figure_authoring/:
+  _: "그림·차트·다이어그램·스크린샷"
+  _conventions: [content/figure]
+
+citation_reference/:
+  _: "인용·각주·참고문헌"
+  _conventions: [structure/reference, content/quotation]
+
+heading_toc/:
+  _conventions: [structure/heading, office/word]
+
+design_setup/:
+  _: "typography·style·layout 설정"
+  _conventions: [design/typography, design/style, design/layout, branding/brand]
+
+word_features/:
+  _: "Word 기능 (변경 추적·field·자동화)"
+  _conventions: [office/word]
+
+template_use/:
+  _: "template 사용·수정"
+  _conventions: [office/template, branding/brand]
+
+export_share/:
+  _conventions: [office/export]
+  _workflows: [finalize]
+
+a11y_check/:
+  _conventions: [accessibility/a11y]
+brand_check/:
+  _conventions: [branding/brand]
+consistency_check/:
+  _conventions: [quality/consistency]
+review_flow/:
+  _conventions: [quality/review]
+  _workflows: [review]
+
+# 문서 종류별
+doc_type_memo:
+  _: "1~2 page. 빠른 작성·결정 trail"
+  _conventions: [structure/document, content/paragraph, writing/writing]
+doc_type_report_executive:
+  _: "5~10 page + 부록. 요약 우선"
+  _conventions: [structure/document, structure/heading, content/paragraph, writing/writing]
+doc_type_report_technical:
+  _: "15~50 page. 다이어그램·코드·detail"
+  _conventions: [structure/document, writing/technical, content/figure, content/table]
+doc_type_proposal:
+  _: "P→S→Cost→Team→CTA"
+  _conventions: [structure/document, writing/writing, branding/brand]
+doc_type_manual:
+  _: "step-by-step. troubleshooting. index"
+  _conventions: [structure/document, writing/technical, content/list]
+doc_type_academic:
+  _: "IMRaD. 인용·재현성"
+  _conventions: [structure/document, structure/reference, content/quotation, writing/academic]
+doc_type_contract:
+  _: "법무 review 의무"
+  _conventions: [structure/document, writing/writing, quality/consistency]
+doc_type_official_letter:
+  _: "형식 엄격. 사내 standard"
+  _conventions: [structure/document, branding/brand]
+
+# 사내 자산
+assets/:
+  _: "팀 공유 brand·template 자산"
+  templates/:
+    _: ".dotx files — 문서 종류별"
+    _conventions: [office/template, branding/brand]
+  logos/:
+    _conventions: [branding/brand]
+  brand_guide.pdf:
+    _conventions: [branding/brand]
+  style_guide.docx:
+    _: "사내 글쓰기 가이드"
+    _conventions: [writing/writing, quality/consistency]
+
+# prompt-word (이 인덱스 자체)
+prompt-word/:
+  CLAUDE.md:
+    _: "agent 진입점. 6하원칙 + 동적 로드 매트릭스"
+  index.yml:
+    _: "이 파일"
+  conventions/:
+    structure/:
+      _: "document/heading/reference"
+    content/:
+      _: "paragraph/list/table/figure/quotation"
+    design/:
+      _: "typography/style/layout"
+    office/:
+      _: "word/export/template"
+    writing/:
+      _: "writing(일반) + technical + academic"
+    accessibility/:
+      _: "WCAG·alt·heading·contrast·reading order"
+    branding/:
+      _: "brand 일관성"
+    quality/:
+      _: "review + consistency"
+  workflows/:
+    task-flow.md:
+      _: "entry. 요청 → plan → draft → review → finalize"
+    plan.md:
+      _: "목적·독자·범위·종류·구조 outline"
+    draft.md:
+      _: "template + heading + 본문 + 인용"
+    review.md:
+      _: "self → peer → stakeholder → proofreader"
+    finalize.md:
+      _: "변경 추적 정리 + field update + 메타 검사 + export + archive"

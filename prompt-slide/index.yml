@@ -1,0 +1,124 @@
+# prompt-slide 인덱스. MS PowerPoint deck 작성 SSOT.
+# _conventions / _workflows 값은 prompt-slide/conventions/<path> 또는 prompt-slide/workflows/<name>을 가리킴 (`.md` 생략).
+
+# 작업 영역별 convention/workflow 매트릭스
+deck_design/:
+  _: "전체 deck 설계 (목적·청중·메시지·storyboard·길이·flow)"
+  _conventions: [structure/deck, structure/flow, content/message]
+  _workflows: [plan]
+
+slide_authoring/:
+  _: "단일 슬라이드 작성 (headline + body)"
+  _conventions:
+    - structure/slide
+    - content/message
+    - content/headline
+    - content/bullet
+    - design/typography
+    - design/color
+    - design/layout
+  _workflows: [draft]
+
+data_slide/:
+  _: "차트·표·데이터 슬라이드"
+  _conventions: [content/data, design/color, design/typography]
+
+visual_slide/:
+  _: "이미지·아이콘·스크린샷"
+  _conventions: [content/visual, design/color]
+
+design_system/:
+  _: "master·template·brand 일관성"
+  _conventions: [design/template, design/typography, design/color, design/layout, branding/brand]
+
+text_content/:
+  _: "헤드라인·본문·발표 노트"
+  _conventions: [content/headline, content/bullet, writing/writing]
+
+powerpoint_features/:
+  _: "PowerPoint 특정 기능 (master·애니메이션·transition·section)"
+  _conventions: [office/powerpoint]
+
+export_share/:
+  _: "출력 (pptx·PDF·인쇄) + 공유"
+  _conventions: [office/export]
+  _workflows: [finalize]
+
+a11y_check/:
+  _conventions: [accessibility/a11y]
+brand_check/:
+  _conventions: [branding/brand]
+
+review_flow/:
+  _conventions: [quality/review]
+  _workflows: [review]
+
+rehearse_flow/:
+  _workflows: [rehearse]
+
+# deck 종류 → 적용 표준
+deck_type_executive_briefing:
+  _: "5~10장. pyramid top-down. backup 풍부"
+  _conventions: [structure/deck, structure/flow, content/message, content/headline]
+deck_type_technical_deep_dive:
+  _: "15~30장. step-by-step. 차트·diagram 중심"
+  _conventions: [structure/deck, content/data, content/visual]
+deck_type_sales_pitch:
+  _: "Problem→Solution→Proof→Ask. CTA 명확"
+  _conventions: [structure/flow, content/message, branding/brand]
+deck_type_training:
+  _: "step-by-step. 핸드아웃. 연습"
+  _conventions: [structure/deck, content/bullet]
+deck_type_conference_talk:
+  _: "story arc. signature slide. timing 엄격"
+  _conventions: [structure/flow, content/visual, design/typography]
+deck_type_status_report:
+  _: "진행·issue·next. 간결"
+  _conventions: [structure/deck, content/data]
+
+# 사내 자산
+assets/:
+  _: "팀 공유 brand 자산"
+  templates/:
+    _conventions: [design/template, branding/brand]
+  logos/:
+    _conventions: [branding/brand]
+  brand_guide.pdf:
+    _conventions: [branding/brand]
+
+# prompt-slide (이 인덱스 자체)
+prompt-slide/:
+  CLAUDE.md:
+    _: "agent 진입점. 6하원칙 + 동적 로드 매트릭스"
+  index.yml:
+    _: "이 파일"
+  conventions/:
+    structure/:
+      _: "deck/slide/flow"
+    content/:
+      _: "message/headline/bullet/data/visual"
+    design/:
+      _: "typography/color/layout/template"
+    office/:
+      _: "powerpoint/export"
+    writing/:
+      _: "글쓰기 일반"
+    accessibility/:
+      _: "WCAG·alt·contrast·reading order"
+    branding/:
+      _: "brand 일관성"
+    quality/:
+      _: "검토 체크리스트"
+  workflows/:
+    task-flow.md:
+      _: "entry. 요청 → plan → draft → review → finalize → rehearse"
+    plan.md:
+      _: "목적·청중·big idea·storyboard"
+    draft.md:
+      _: "master + slide 작성"
+    review.md:
+      _: "6 axis 검토"
+    finalize.md:
+      _: "export + 공유 + backup"
+    rehearse.md:
+      _: "timing + Q&A + 환경 검증"
