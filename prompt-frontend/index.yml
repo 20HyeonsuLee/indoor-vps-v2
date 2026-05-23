@@ -1,0 +1,262 @@
+# 프로젝트 구조 + 경로별 적용 convention/workflow.
+# _conventions / _workflows 값은 prompt-frontend/conventions/<path> 또는 prompt-frontend/workflows/<name>을 가리킴 (`.md` 생략).
+# 항상 적용되는 룰(code/cleancode, code/oop, git/commit, git/pr, git/review)은 CLAUDE.md "항상 적용" 섹션 참조.
+
+# ============================================================
+# 루트 파일·메타
+# ============================================================
+.github/:
+  workflows/:
+    _conventions: [workflows/cicd, docker/image, git/release]
+    _workflows: [cicd, release]
+  ISSUE_TEMPLATE/:
+    _conventions: [git/issue]
+  CODEOWNERS:
+    _conventions: [git/codeowners]
+  pull_request_template.md:
+    _conventions: [git/pr, git/review]
+
+.gitignore:
+  _conventions: [git/gitignore]
+.gitattributes:
+  _conventions: [git/gitattributes]
+.dockerignore:
+  _conventions: [docker/dockerignore]
+
+package.json:
+  _conventions: [build/pnpm]
+pnpm-lock.yaml:
+  _conventions: [build/pnpm]
+pnpm-workspace.yaml:
+  _: "monorepo 도입 시"
+  _conventions: [build/pnpm]
+.nvmrc:
+  _conventions: [build/pnpm]
+.npmrc:
+  _conventions: [build/pnpm]
+
+next.config.ts:
+  _conventions: [build/next-config, framework/nextjs]
+tailwind.config.ts:
+  _conventions: [framework/tailwind]
+tsconfig.json:
+  _conventions: [config/tsconfig]
+eslint.config.ts:
+  _conventions: [config/eslint-prettier]
+.prettierrc:
+  _conventions: [config/eslint-prettier]
+
+.env:
+  _conventions: [config/env, security/security]
+.env.example:
+  _conventions: [config/env]
+.env.local:
+  _: ".gitignore. 로컬 override"
+.env.production:
+  _conventions: [config/env, security/security]
+
+CLAUDE.md:
+  _: "루트 CLAUDE.md — 프로젝트 메타(stack/forbidden/scale/ADR 인덱스). 모든 agent 진입 시 로드"
+README.md:
+  _: "사람용 README"
+
+# ============================================================
+# docker
+# ============================================================
+docker/:
+  _conventions:
+    - docker/dockerfile
+    - docker/clean
+    - docker/design
+    - docker/dockerignore
+    - docker/image
+  _workflows: [cicd, release]
+  Dockerfile:
+    _conventions: [docker/dockerfile, docker/clean, docker/design]
+
+docker-compose.yml:
+  _conventions: [docker/docker-compose, docker/clean, docker/design, docker/healthcheck, docker/network]
+docker-compose.local.yml:
+  _conventions: [docker/docker-compose, docker/clean]
+docker-compose.prod.yml:
+  _conventions: [docker/docker-compose, docker/clean, docker/image]
+
+# ============================================================
+# docs (ADR / PRD / glossary)
+# ============================================================
+docs/:
+  decisions/:
+    _conventions: [docs/ard]
+    _workflows: [poc]
+  prd/:
+    _conventions: [docs/prd]
+  glossary.md:
+    _conventions: [docs/glossary]
+  tasks/:
+    _: "task 단위 plan/PoC report/incident report"
+
+# ============================================================
+# app/ (Next.js App Router)
+# ============================================================
+app/:
+  _: "Next.js App Router. 라우트·layout·페이지"
+  _conventions: [architecture/route, framework/nextjs, framework/react]
+  _workflows: [code, add-feature]
+  layout.tsx:
+    _: "root layout. providers (QueryClient, theme, fonts)"
+    _conventions: [architecture/route, framework/nextjs]
+  page.tsx:
+    _: "루트 page"
+    _conventions: [architecture/route, framework/nextjs]
+  error.tsx:
+    _conventions: [architecture/route, observability/observability]
+  not-found.tsx:
+    _conventions: [architecture/route]
+  loading.tsx:
+    _conventions: [architecture/route]
+  global-error.tsx:
+    _conventions: [architecture/route, observability/observability]
+  api/:
+    _: "API route (BFF). server-only env 접근 가능"
+    _conventions: [architecture/api-client, framework/nextjs, security/security]
+  "(public)/":
+    _: "그룹 라우트 (괄호는 URL 영향 없음)"
+    _conventions: [architecture/route]
+  "(auth)/":
+    _: "인증 보호 라우트. middleware 또는 layout으로 검증"
+    _conventions: [architecture/route, security/security]
+  "[id]/":
+    _: "동적 라우트 예시"
+    _conventions: [architecture/route]
+
+# ============================================================
+# src/
+# ============================================================
+src/:
+  components/:
+    _: "재사용 가능 컴포넌트 (route 무관)"
+    ui/:
+      _: "디자인 시스템 primitive (Button, Input, Modal 등)"
+      _conventions: [architecture/component, framework/tailwind, framework/react]
+      _workflows: [add-component]
+    layouts/:
+      _: "AppShell, Sidebar 등 layout 단위"
+      _conventions: [architecture/component, framework/react]
+  features/:
+    _: "도메인별 feature 폴더"
+    _workflows: [add-feature]
+    "<feature>/":
+      _conventions: [architecture/component, framework/react]
+      components/:
+        _conventions: [architecture/component, framework/react, framework/tailwind]
+      hooks/:
+        _conventions: [architecture/hook, framework/react]
+      api/:
+        _conventions: [architecture/api-client, framework/tanstack-query]
+      types.ts:
+        _conventions: [config/tsconfig]
+  hooks/:
+    _: "전역 공통 hook"
+    _conventions: [architecture/hook, framework/react]
+  stores/:
+    _: "Zustand store (client state)"
+    _conventions: [architecture/store, framework/zustand]
+  lib/:
+    _: "외부 lib wrapper / 공통 util"
+    api/:
+      _: "HTTP client (fetch wrapper + Zod)"
+      _conventions: [architecture/api-client]
+    utils/:
+      _conventions: [code/cleancode, code/oop]
+  styles/:
+    _: "전역 CSS, Tailwind base"
+    _conventions: [framework/tailwind]
+  env.ts:
+    _: "Zod 기반 env schema (t3-oss/env-nextjs 권장)"
+    _conventions: [config/env, security/security]
+  middleware.ts:
+    _: "Next middleware (인증 redirect 등)"
+    _conventions: [framework/nextjs, security/security]
+  instrumentation.ts:
+    _: "Sentry/OTel init (Next 15+)"
+    _conventions: [observability/observability]
+
+# ============================================================
+# 테스트
+# ============================================================
+"e2e/":
+  _: "Playwright E2E"
+  _conventions: [framework/playwright]
+  _workflows: [test, code]
+playwright.config.ts:
+  _conventions: [framework/playwright]
+vitest.config.ts:
+  _conventions: [framework/vitest]
+"src/**/*.test.{ts,tsx}":
+  _conventions: [framework/vitest]
+  _workflows: [test]
+
+# ============================================================
+# 런타임/빌드 산출물 (git 추적 X)
+# ============================================================
+.next/:
+  _: ".gitignore — Next 빌드 산출물"
+node_modules/:
+  _: ".gitignore"
+coverage/:
+  _: ".gitignore — test coverage"
+playwright-report/:
+  _: ".gitignore — Playwright html report"
+
+# ============================================================
+# prompt-frontend (이 인덱스 자체)
+# ============================================================
+prompt-frontend/:
+  _: "AI agent frontend SSOT"
+  CLAUDE.md:
+    _: "agent 진입점. 6하원칙 + 동적 로드 매트릭스"
+  index.yml:
+    _: "이 파일. 프로젝트 구조 + 경로별 convention/workflow 매핑"
+  conventions/:
+    architecture/:
+      _: "frontend layer 경계 (component/hook/route/store/api-client)"
+    build/:
+      _: "pnpm + next-config"
+    code/:
+      _: "언어 무관 일반 원칙 (cleancode, oop). 백엔드와 공유"
+    config/:
+      _: "tsconfig + eslint-prettier + env"
+    docker/:
+      _: "이미지·compose·base·network·healthcheck·image·design·clean. 백엔드와 공유 (base.md 제외)"
+    docs/:
+      _: "ADR·glossary·PRD. 백엔드와 공유"
+    framework/:
+      _: "nextjs/react/tailwind/tanstack-query/zustand/react-hook-form/vitest/playwright"
+    git/:
+      _: "branch/commit/PR/review/release/signing/issue 등. 백엔드와 공유"
+    observability/:
+      _: "logging·error tracking·analytics·performance·alert (frontend 보강)"
+    security/:
+      _: "auth·XSS·CSRF·secrets·input·transport (frontend 재작성)"
+  workflows/:
+    _: "절차. entry는 task-flow"
+    task-flow.md:
+      _: "entry point. 이슈 발급 → triage → branch → code → PR → review → merge → close"
+    code.md:
+      _: "코드 작성 절차 (route → component → state → API → 테스트 → a11y)"
+    code-review.md:
+      _: "6 axis 리뷰"
+    test.md:
+      _: "Vitest(단위) + Playwright(E2E)"
+    cicd.md:
+      _: "PR push → dev → prod 파이프라인"
+    release.md:
+      _: "SemVer tag + digest promotion"
+    hotfix.md:
+      _: "긴급 복구 + 24h 사후 의무"
+    poc.md:
+      _: "시간 박스 PoC → ADR"
+    add-feature.md:
+      _: "feature 단위(라우트+컴포넌트+상태+API+테스트) 추가"
+    add-component.md:
+      _: "디자인 시스템 컴포넌트 추가 (a11y 우선)"

@@ -1,0 +1,32 @@
+## rule
+- Component는 **함수형**만. class component 금지.
+- 명명 PascalCase (`UserCard.tsx`, `LoginForm.tsx`). 파일 1개 = 컴포넌트 1개 (helper 컴포넌트는 같은 파일 OK).
+- 위치:
+  - 라우트 종속: `app/<route>/_components/<Name>.tsx`
+  - 도메인 공통: `src/features/<feature>/components/<Name>.tsx`
+  - 디자인 시스템: `src/components/ui/<Name>.tsx` (Button, Input 등)
+- props는 `interface <Name>Props` 또는 `type`. 명시 export.
+- props 5개 초과 → 묶음 객체 또는 children pattern.
+- children prop 적극 (composition over configuration).
+- 분류:
+  - **server component** (기본, RSC): data fetch + 직렬화 가능 props
+  - **client component** (`"use client"`): interactivity, state, effect, browser API
+  - 경계는 가능한 leaf에 (client island)
+- side effect는 `useEffect`로 격리. render 안에서 fetch·DOM 접근 금지.
+- conditional rendering은 early return 또는 `&&`/삼항. 깊은 중첩 X.
+- key는 안정 식별자(`id`). index 사용은 정렬·삭제 없는 list에만.
+- ref는 `forwardRef` 또는 React 19 `ref` prop. ref를 통한 명령형 호출은 최소화.
+- 한 파일 > 200줄 또는 컴포넌트 > 150줄 → 분리.
+
+## forbidden
+- class component
+- "use client" 무분별 부착 (server component 가능하면 server로)
+- props drilling 3 depth 초과 (context 또는 store로)
+- inline lambda를 자주 변경되는 list item에 무분별 (re-render 폭증 가능)
+- key={index} (정렬·삭제 list에서)
+- render 안 fetch / DOM 접근 / setTimeout (effect로)
+- 한 파일에 컴포넌트 3개 초과 (split)
+- `dangerouslySetInnerHTML` 무검토 사용 (XSS — security 참조)
+- HTML 내장 element 이름과 충돌하는 명명 (`Input`, `Button` 본인은 OK이지만 명시 import 필요)
+- inline style 남발 (Tailwind 또는 className으로)
+- prop name이 `data-*` / `aria-*`를 가린다

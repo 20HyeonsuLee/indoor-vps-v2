@@ -1,0 +1,31 @@
+## rule
+- HTTP는 **fetch 기반 thin wrapper**. axios도 OK이지만 Next.js + RSC 호환성 위해 fetch 권장.
+- 위치: `src/lib/api/client.ts` (instance) + `src/features/<feature>/api/<name>.ts` (도메인별).
+- request·response 타입은 **Zod schema**로 정의. 같은 schema에서 `z.infer<typeof Schema>`로 type 추출.
+- response는 schema parse 후 반환. 검증 실패는 명시 에러.
+- error는 status별 분류:
+  - 4xx: client error (validation/auth/permission)
+  - 5xx: server error
+  - network: 끊김
+  - timeout: AbortController로 강제
+- 인증 token은 cookie(httpOnly) 또는 메모리. localStorage 금지(XSS).
+- 모든 호출에 timeout (`AbortController`). 무한 대기 금지.
+- TanStack Query와 같이 사용:
+  - query function이 이 client를 호출
+  - retry·cache·refetch는 TanStack Query에 위임
+  - client는 raw HTTP 책임만
+- request id / trace id 헤더 전파 (`x-request-id`, `traceparent`).
+- base URL은 환경변수 (`NEXT_PUBLIC_API_BASE_URL`).
+- BFF 패턴 권장: Next API route(`app/api/*/route.ts`) 또는 server action으로 client는 same-origin 호출. CORS·secret 노출 차단.
+
+## forbidden
+- 컴포넌트 안 raw fetch (api client 경유)
+- response 타입 `any` 또는 unsafe cast
+- Zod parse 누락 (런타임 검증 없이 신뢰)
+- 모든 호출에 timeout 누락
+- token을 localStorage·sessionStorage 평문 저장
+- secret을 client component env로 노출 (`NEXT_PUBLIC_*`은 public)
+- error 무시 (catch만 하고 처리·로깅 X)
+- retry를 client 안에 hardcode (TanStack Query에 위임)
+- response body를 직접 component에 노출 (DTO ↔ ViewModel 변환 권장)
+- BFF 없이 외부 API 직접 호출하면서 secret 노출
