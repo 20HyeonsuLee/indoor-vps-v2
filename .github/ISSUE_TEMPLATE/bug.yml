@@ -1,0 +1,59 @@
+name: Bug
+description: 재현 가능한 버그 보고
+title: "bug(<scope>): <subject>"
+labels: ["type:bug", "status:triage"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: 한 문장 요약. WHAT이 잘못됐는지.
+      placeholder: scan 청크 merge 시 30초 후 timeout.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차
+      description: 1, 2, 3 ... 형식. 누가 따라해도 재현되도록.
+      placeholder: |
+        1. POST /scans 로 세션 시작
+        2. 청크 10개 업로드
+        3. POST /scans/{id}/merge
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작 (로그/스크린샷)
+      description: 로그 스니펫은 fenced code block. 비밀값 마스킹.
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: 환경
+      options:
+        - local
+        - prod
+        - both
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 커밋/태그
+      placeholder: e.g. c2221be / v0.3.1
+    validations:
+      required: true
+  - type: textarea
+    id: refs
+    attributes:
+      label: Refs
+      description: 관련 ADR, PR, 이슈 link

@@ -1,0 +1,51 @@
+name: Decision
+description: 결정해야 할 질문. 결정 후 ADR로 영구화하고 close.
+title: "decision(<scope>): <subject>"
+labels: ["type:decision", "status:triage"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: 결정 질문
+      description: 어떤 선택을 해야 하는가. 단일 질문으로.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: 결정이 필요해진 배경·제약·트레이드오프.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: 옵션
+      description: 검토 중인 안을 모두 적는다. 각 안의 장단점.
+      placeholder: |
+        - (a) ui layer 승격
+          - 장점: ...
+          - 단점: ...
+        - (b) infrastructure/web 유지
+          - 장점: ...
+          - 단점: ...
+    validations:
+      required: true
+  - type: input
+    id: decider
+    attributes:
+      label: 결정 책임자
+    validations:
+      required: true
+  - type: input
+    id: deadline
+    attributes:
+      label: 결정 기한
+      placeholder: YYYY-MM-DD
+    validations:
+      required: true
+  - type: textarea
+    id: refs
+    attributes:
+      label: Refs
+      description: 관련 ADR/PRD/이슈 link

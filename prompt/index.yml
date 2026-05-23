@@ -1,0 +1,60 @@
+.github:
+.gitignore:
+.dockerignore:
+build.gradle.kts:
+settings.gradle.kts:
+CLAUDE.md:
+AGENTS.md:
+README.md:
+docker:
+docs:
+  ard:
+  prd:
+src:
+  main:
+    java/kr/ac/koreatech/indoor/vps:
+      app:
+        exception:
+        cors:
+        auth:
+      core:
+        building:
+          application:
+          domain:
+          infrastructure:
+          ui:
+        floor:
+          application:
+          domain: conventions/architecture/domain.md
+          infrastructure:
+          ui:
+        scan:
+          application:
+          domain:
+          infrastructure:
+          ui:
+        localize:
+          application:
+          domain:
+          infrastructure:
+          ui:
+        pathfinding:
+          application:
+          domain:
+          infrastructure:
+          ui:
+      config:
+    resources:
+      db:
+      application.yml:
+      application-local.yml:
+      application.prod.yml:
+  test:
+    java/kr/ac/koreatech/indoor/vps:
+      app:
+      contexts:
+      krate:
+    resources:
+      karate:
+      application.yml:
+      karate-config.js:

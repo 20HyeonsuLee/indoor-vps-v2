@@ -1,0 +1,38 @@
+name: Feature
+description: 새 기능 또는 enhancement
+title: "feat(<scope>): <subject>"
+labels: ["type:feat", "status:triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: 어떤 사용자/비즈니스 pain인가.
+    validations:
+      required: true
+  - type: textarea
+    id: scenarios
+    attributes:
+      label: 사용자 시나리오
+      description: 핵심 사용 흐름 1~3개. Karate feature와 1:1 매핑 가능한 단위.
+      placeholder: |
+        - 관리자가 floor에 polygon을 바인딩한다 → 이후 /floors/{id}/map 응답에 polygon 포함
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 기준 (Acceptance Criteria)
+      description: 측정 가능한 기준. P99·성공률 등.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-Goals
+      description: 의도적으로 안 하는 것 (범위 폭증 차단).
+  - type: textarea
+    id: refs
+    attributes:
+      label: Refs
+      description: 관련 PRD, ADR, 이슈 link
