@@ -281,4 +281,26 @@ prompt/:
     security/:
       _: "auth·secrets·input/output·dependency·transport"
   workflows/:
-    _: "절차 — when/how, skill 호출 시퀀스"
+    _: "절차 — when/how, skill 호출 시퀀스. 모든 작업의 entry point는 task-flow"
+    task-flow.md:
+      _: "entry point. 이슈 발급 → triage → branch → code → PR → review → merge → close 7단계"
+    code.md:
+      _: "코드 작성 8단계 (outside-in BDD)"
+    code-review.md:
+      _: "6 axis 리뷰 실행"
+    test.md:
+      _: "단위(JUnit) + 통합(Karate) 테스트 작성·실행"
+    cicd.md:
+      _: "PR push → dev → prod 파이프라인"
+    release.md:
+      _: "SemVer tag + digest promotion"
+    hotfix.md:
+      _: "긴급 복구 + 24h 사후 의무 (task-flow 예외 entry)"
+    migration.md:
+      _: "Expand-Contract 3-PR 분할"
+    add-context.md:
+      _: "새 Bounded Context 신설 (응집도 우선·ADR 의무)"
+    add-python-pipeline.md:
+      _: "ProcessBuilder JSON 통합 파이프라인 13단계"
+    poc.md:
+      _: "시간 박스 PoC → ADR 변환"

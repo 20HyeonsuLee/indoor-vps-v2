@@ -153,22 +153,25 @@ agent는 작업 시작 전 **루트 `CLAUDE.md` → `prompt/index.yml` → `prom
 
 ## 작업 종류 → 워크플로우 매트릭스
 
-| 작업 | workflow |
-|---|---|
-| 새 기능 구현 | `workflows/code` |
-| 코드 리뷰 | `workflows/code-review` |
-| 테스트 작성 | `workflows/test` |
-| 배포 (정상) | `workflows/release`, `workflows/cicd` |
-| 긴급 fix | `workflows/hotfix` |
-| DB 변경 | `workflows/migration` |
-| 새 Bounded Context | `workflows/add-context` |
-| Python pipeline 추가 | `workflows/add-python-pipeline` |
-| 결정 검증·실험 | `workflows/poc` |
+**모든 작업은 `workflows/task-flow` 가 entry point**. 이슈 티켓 발급으로 시작. 그 안에서 작업 종류별 추가 workflow를 분기 호출.
+
+| 작업 | entry | 추가 workflow |
+|---|---|---|
+| 새 기능 구현 | `task-flow` | `code` |
+| 코드 리뷰 | `task-flow` step 6 | `code-review` |
+| 테스트 작성 | `task-flow` 내 | `test` |
+| 배포 (정상) | `task-flow` merge 후 | `cicd` → `release` |
+| 긴급 fix | `hotfix` (예외 entry) | `task-flow` 사후 이슈 |
+| DB 변경 | `task-flow` | `code` + `migration` |
+| 새 Bounded Context | `task-flow` | `add-context` → `code` |
+| Python pipeline 추가 | `task-flow` | `add-python-pipeline` → `code` |
+| 결정 검증·실험 | `task-flow` (decision 이슈) | `poc` → ADR |
 
 ---
 
 ## 항상 적용되는 룰 (PR마다)
 
+- **모든 작업은 이슈 티켓 발급부터** (`workflows/task-flow`, `git/issue`)
 - Conventional Commits (`git/commit.md`)
 - 1 PR 1 논리 변경, 1 PR 1 migration 최대 (`git/pr.md`)
 - 6 axis review (`git/review.md`, `workflows/code-review.md`)
@@ -192,21 +195,31 @@ agent는 작업 시작 전 **루트 `CLAUDE.md` → `prompt/index.yml` → `prom
 ```
 [user 요구]
   ↓
-plan        →  ADR/PRD 산출. docs/decisions, docs/prd, docs/tasks
+[issue 발급]   →  workflows/task-flow step 1. .github/ISSUE_TEMPLATE
   ↓
-eval-plan   →  plan 6 axis 검토 (read-only)
+[triage]      →  task-flow step 2. label·assignee·우선순위
   ↓
-generate-plan → PR 분할 plan. docs/tasks/<seq>/plan.md
+plan          →  ADR/PRD 산출. docs/decisions, docs/prd, docs/tasks
   ↓
-eval-plan   →  분할 plan 검토 (선택)
+eval-plan     →  plan 6 axis 검토 (read-only)
   ↓
-generate    →  실제 코드. PR 1+ open
+generate-plan →  PR 분할 plan. docs/tasks/<seq>/plan.md
   ↓
-eval        →  PR 6 axis review
+eval-plan     →  분할 plan 검토 (선택)
   ↓
-merge       →  workflows/cicd → dev 자동 배포
+[branch]      →  task-flow step 3. main에서 분기
   ↓
-release tag →  workflows/release → prod 배포
+generate      →  실제 코드. workflows/code. PR 1+ open
+  ↓
+eval          →  PR 6 axis review. workflows/code-review
+  ↓
+[squash merge] →  task-flow step 7. 이슈 auto close
+  ↓
+deploy        →  workflows/cicd → dev 자동 배포
+  ↓
+release tag   →  workflows/release → prod 배포
 ```
+
+모든 단계는 `workflows/task-flow` 안에서 일관 lifecycle. 단 `hotfix`는 예외 entry로 incident → 복구 → 24h 내 사후 이슈.
 
 각 단계의 산출물·convention·workflow는 위 6하원칙 섹션 참조.
