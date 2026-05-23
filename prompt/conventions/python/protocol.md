@@ -1,0 +1,35 @@
+## rule
+- Spring ↔ Python 통합은 **ProcessBuilder + stdin/stdout JSON** (ADR-005). HTTP·gRPC·shared file 신규 도입 X.
+- 호출 방식: Java가 Python entry를 subprocess로 실행 → stdin에 JSON 1개 write → Python이 stdout에 JSON 1개 출력 → Java가 read·파싱.
+- 입력 JSON: 1 request = 1 JSON object. multi-line·여러 object 금지.
+- 출력 JSON: 1 response = 1 JSON object. **stdout에는 결과 JSON 외 어떤 텍스트도 없음**. 로그는 stderr.
+- 에러 프로토콜:
+  - 정상: exit code = 0, stdout = `{"<result fields>"}`
+  - 실패: exit code != 0, stderr = `{"error_code": "...", "message": "...", "details": {...}}`
+- exit code 약속:
+  - 0: 성공
+  - 1: 입력 검증 실패
+  - 2: 외부 의존 실패 (model load·DB)
+  - 3: 도메인 처리 실패
+  - 4+: 사용자 정의
+- timeout은 호출 측(Java)에서 강제. ProcessBuilder + Future. 무한 대기 금지.
+- 큰 binary(이미지·point cloud)는 JSON inline base64 금지. 별도 파일 경로 또는 named pipe로 전달.
+- Python entry는 stateless. 한 subprocess 호출 = 1 request 처리 후 종료. long-running daemon 금지(필요 시 ADR).
+- JSON 스키마는 양쪽에 record/dataclass로 명시. 임의 dict 전달 금지.
+- Python 안 비즈니스 로직 금지 (CLAUDE.md forbidden). 입출력 변환 + 모델 추론만.
+- Python 의존성은 호출 측이 보장 (Docker image에 미리 install).
+- Python entry path는 Java config로 주입. hardcode 금지.
+
+## forbidden
+- stdout에 결과 외 텍스트 (로그·진행률 출력) — stderr로
+- exit code 무시 (실패도 정상 처리하면 silent failure)
+- 무한 timeout
+- JSON inline에 큰 binary base64
+- long-running daemon mode (1 호출 1 process 종료)
+- 양쪽 JSON 스키마 비일치 (record/dataclass로 명시)
+- HTTP·gRPC·socket 새 IPC 도입 (ADR 필요)
+- Python 안 비즈니스 로직
+- entry path hardcode
+- shared file system을 통한 결과 전달 (race·cleanup 어려움 — 명시적 file path 인자만)
+- Python에서 Java 호출 (역방향 금지)
+- stderr에 비밀값 출력

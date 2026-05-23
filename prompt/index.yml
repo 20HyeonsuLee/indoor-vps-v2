@@ -1,60 +1,284 @@
-.github:
+# 프로젝트 구조 + 경로별 적용 convention/workflow.
+# _conventions / _workflows 값은 prompt/conventions/<path> 또는 prompt/workflows/<name>을 가리킴 (`.md` 생략).
+# 항상 적용되는 룰(code/cleancode, code/oop, git/commit, git/pr, git/review)은 CLAUDE.md "항상 적용" 섹션 참조.
+# 변경 시 prompt/CLAUDE.md 동적 로드 매트릭스도 동기화.
+
+# ============================================================
+# 루트 파일·메타
+# ============================================================
+.github/:
+  _: "GitHub 표준 폴더 — CI/CD, 이슈/PR 템플릿, CODEOWNERS"
+  workflows/:
+    _: "GitHub Actions 파이프라인 정의"
+    _conventions: [workflows/cicd, docker/image, git/release]
+    _workflows: [cicd, release]
+  ISSUE_TEMPLATE/:
+    _conventions: [git/issue]
+  CODEOWNERS:
+    _conventions: [git/codeowners]
+  pull_request_template.md:
+    _conventions: [git/pr, git/review]
+
 .gitignore:
+  _conventions: [git/gitignore]
+.gitattributes:
+  _conventions: [git/gitattributes]
 .dockerignore:
+  _conventions: [docker/dockerignore]
+
 build.gradle.kts:
+  _conventions: [build/gradle, build/dependencies]
 settings.gradle.kts:
+  _conventions: [build/gradle]
+gradle/:
+  _: "gradle wrapper. commit 필수"
+  _conventions: [build/gradle]
+gradlew:
+  _conventions: [build/gradle]
+gradlew.bat:
+  _conventions: [build/gradle]
+
 CLAUDE.md:
+  _: "루트 CLAUDE.md — 프로젝트 메타(stack/forbidden/scale/ADR 인덱스). 모든 agent 진입 시 로드"
 AGENTS.md:
+  _: "에이전트 agnostic 정의. AI agent 협업 규약"
 README.md:
-docker:
-docs:
-  ard:
-  prd:
-src:
-  main:
-    java/kr/ac/koreatech/indoor/vps:
-      app:
-        exception:
-        cors:
-        auth:
-      core:
-        building:
-          application:
-          domain:
-          infrastructure:
-          ui:
-        floor:
-          application:
-          domain: conventions/architecture/domain.md
-          infrastructure:
-          ui:
-        scan:
-          application:
-          domain:
-          infrastructure:
-          ui:
-        localize:
-          application:
-          domain:
-          infrastructure:
-          ui:
-        pathfinding:
-          application:
-          domain:
-          infrastructure:
-          ui:
-      config:
-    resources:
-      db:
+  _: "사람용 README"
+
+# ============================================================
+# docker (이미지·compose)
+# ============================================================
+docker/:
+  _: "이미지 빌드 정의"
+  _conventions:
+    - docker/dockerfile
+    - docker/clean
+    - docker/design
+    - docker/dockerignore
+    - docker/image
+  _workflows: [cicd, release]
+  Dockerfile:
+    _conventions: [docker/dockerfile, docker/clean, docker/design]
+  Dockerfile.local:
+    _: "환경별 분리 (단일 Dockerfile + multi-target으로 통합 권장 — docker/design)"
+    _conventions: [docker/dockerfile, docker/clean]
+  Dockerfile.prod:
+    _conventions: [docker/dockerfile, docker/clean]
+  Dockerfile.base:
+    _: "신설 권장 — CUDA/PyTorch/LightGlue base image (docker/base)"
+    _conventions: [docker/base, docker/dockerfile]
+
+docker-compose.yml:
+  _conventions: [docker/docker-compose, docker/clean, docker/design, docker/healthcheck, docker/network]
+docker-compose.local.yml:
+  _conventions: [docker/docker-compose, docker/clean]
+docker-compose.prod.yml:
+  _conventions: [docker/docker-compose, docker/clean, docker/image]
+
+# ============================================================
+# docs (ADR / PRD / glossary / runbook)
+# ============================================================
+docs/:
+  _: "결정·요구사항·도메인 용어집·운영 문서"
+  decisions/:
+    _: "ADR. 영구 기록. forward-only (변경은 새 ADR + Superseded)"
+    _conventions: [docs/ard]
+    _workflows: [poc]
+  prd/:
+    _: "Product Requirements"
+    _conventions: [docs/prd]
+  glossary.md:
+    _conventions: [docs/glossary]
+  tasks/:
+    _: "task 단위 plan/PoC report/incident report"
+    _conventions: [docs/prd, docs/ard]
+
+# ============================================================
+# python (CV/SLAM 파이프라인. Spring과 ProcessBuilder JSON 통합)
+# ============================================================
+python/:
+  _: "ProcessBuilder + stdin/stdout JSON으로 호출되는 파이프라인 (ADR-005, ADR-009)"
+  _conventions: [python/uv, python/protocol]
+  _workflows: [add-python-pipeline]
+  legacy_backend/:
+    _: "기존 SLAM 백엔드. pyproject.toml + uv.lock"
+    _conventions: [python/uv, python/protocol]
+    pyproject.toml:
+      _conventions: [python/uv, build/dependencies]
+    uv.lock:
+      _conventions: [python/uv]
+
+# ============================================================
+# scripts (보조 스크립트)
+# ============================================================
+scripts/:
+  _: "로컬/CI 보조 — bridge entry, seed, deploy 보조"
+  _conventions: [code/cleancode]
+  python_bridge/:
+    _conventions: [python/protocol]
+
+# ============================================================
+# src/main (프로덕션 코드)
+# ============================================================
+src/:
+  main/:
+    java/kr/ac/koreatech/indoor/vps/:
+      app/:
+        _: "Application 진입점, 전역 부트스트랩"
+        _conventions: [framework/springboot, code/cleancode, code/oop]
+        exception/:
+          _conventions: [framework/springboot, framework/logback]
+        cors/:
+          _conventions: [framework/springboot, security/security]
+        auth/:
+          _conventions: [framework/springboot, security/security]
+      config/:
+        _: "Spring Bean / Filter / Interceptor 설정"
+        _conventions: [framework/springboot, config/application]
+      shared/:
+        _: "여러 context 공통 무상태 유틸·타입·Null Object"
+        _conventions: [code/cleancode, code/oop]
+        exception/:
+          _conventions: [code/oop, framework/springboot]
+      contexts/:
+        _: "Bounded Context 모음 (ADR-001 적층 구조)"
+        _workflows: [add-context]
+        mapping/:
+          _: "현재 유일한 context. 사용자 미래 분리 의도: building/floor/scan/localize/pathfinding"
+          application/:
+            _: "UseCase 계층. 1 UseCase = 1 클래스, @Transactional 경계"
+            _conventions:
+              - architecture/application/service
+              - architecture/application/port
+              - framework/springboot
+              - code/cleancode
+              - code/oop
+            _workflows: [code, test]
+          domain/:
+            _: "도메인 모델. Aggregate Root = JPA @Entity (ADR-008). Repository interface 선언"
+            _conventions:
+              - architecture/domain/repository
+              - architecture/domain/service
+              - architecture/domain/model/entity
+              - architecture/domain/model/vo
+              - framework/jpa
+              - code/cleancode
+              - code/oop
+            _workflows: [code]
+          domain/*/port/:
+            _: "도메인 종속 외부 시스템 port (VisionProcessor 등)"
+            _conventions:
+              - architecture/application/port
+              - python/protocol
+          infrastructure/:
+            _: "외부 시스템 어댑터"
+            _conventions: [framework/springboot, code/cleancode]
+            web/:
+              _: "REST Controller + Request/Response DTO (ui layer 도입 결정 시 ui/로 이동)"
+              _conventions:
+                - architecture/ui/controller
+                - architecture/ui/dto
+                - framework/springboot
+              controller/:
+                _conventions: [architecture/ui/controller]
+              dto/:
+                _conventions: [architecture/ui/dto]
+            rtabmap/:
+              _: "RTAB-Map SQLite 읽기 (ADR-010)"
+              _conventions: [architecture/infrastructure/persistence, framework/jpa]
+            localization/:
+              _conventions: [architecture/infrastructure/external, python/protocol]
+            capture/:
+              _conventions: [architecture/infrastructure/external]
+            bridge/:
+              _: "Python bridge adapter"
+              _conventions: [architecture/infrastructure/external, python/protocol]
+            storage/:
+              _conventions: [architecture/infrastructure/persistence]
+    resources/:
+      _conventions: [config/application]
       application.yml:
+        _: "base 설정 (모든 환경 기본값)"
+        _conventions: [config/application, config/env]
       application-local.yml:
-      application.prod.yml:
-  test:
-    java/kr/ac/koreatech/indoor/vps:
-      app:
-      contexts:
-      krate:
-    resources:
-      karate:
-      application.yml:
+        _: "local override (.gitignore 추적)"
+        _conventions: [config/application, config/env, security/security]
+      application-prod.yml:
+        _conventions: [config/application, config/env, security/security]
+      db/:
+        migration/:
+          _: "Flyway 마이그레이션. 1 PR 1 migration (ADR-006)"
+          _conventions: [framework/flyway]
+          _workflows: [migration]
+
+# ============================================================
+# src/test (테스트 코드)
+# ============================================================
+  test/:
+    java/:
+      _conventions: [framework/junit, code/cleancode, code/oop]
+      _workflows: [test]
+    resources/:
+      karate/:
+        _: "Karate feature (외부 동작 명세). 통합테스트 겸함 (ADR-004)"
+        _conventions: [framework/karate]
+        _workflows: [test, code]
       karate-config.js:
+        _conventions: [framework/karate]
+      application.yml:
+        _: "테스트 환경 설정"
+        _conventions: [config/application]
+
+# ============================================================
+# 런타임/빌드 산출물 (git 추적 X)
+# ============================================================
+build/:
+  _: ".gitignore — 빌드 산출물"
+var/:
+  _: ".gitignore — runtime storage (183M)"
+logs/:
+  _: ".gitignore"
+tmp/:
+  _: ".gitignore"
+backups/:
+  _: ".gitignore — *.tar.gz/zip"
+test-fixtures/:
+  _: "테스트 fixture. captured/ 는 .gitignore"
+  captured/:
+    _: ".gitignore"
+
+# ============================================================
+# prompt (AI agent 인덱스 자체)
+# ============================================================
+prompt/:
+  _: "AI agent 컨벤션·워크플로우 SSOT"
+  CLAUDE.md:
+    _: "agent 진입점. 6하원칙 + 동적 로드 매트릭스. 줄글"
+  index.yml:
+    _: "이 파일. 프로젝트 구조 + 경로별 convention/workflow 매핑"
+  conventions/:
+    _: "정적 룰 — what / forbidden"
+    architecture/:
+      _: "layer 경계 + 책임 분리"
+    build/:
+      _: "Gradle + 의존성"
+    code/:
+      _: "언어 무관 일반 원칙 (cleancode, oop)"
+    config/:
+      _: "Spring yml + 환경변수"
+    docker/:
+      _: "이미지·compose·base·network·healthcheck·image·design·clean"
+    docs/:
+      _: "ADR·glossary·PRD 작성 규약"
+    framework/:
+      _: "Spring/JPA/Flyway/Karate/JUnit/logback 패턴"
+    git/:
+      _: "branch/commit/PR/review/release/signing/issue 등"
+    observability/:
+      _: "logging·metrics·tracing·health·alert"
+    python/:
+      _: "uv + ProcessBuilder JSON protocol"
+    security/:
+      _: "auth·secrets·input/output·dependency·transport"
+  workflows/:
+    _: "절차 — when/how, skill 호출 시퀀스"
