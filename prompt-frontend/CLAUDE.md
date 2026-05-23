@@ -19,7 +19,7 @@ Stack: **Next.js 15 App Router + TypeScript + Tailwind + TanStack Query + Zustan
 | generate | 3 | 코드 작성 | PR | `code/*`, 경로별 동적 로드 (아래), `workflows/code` |
 | eval | 4 | PR 검토 | review 코멘트 | `git/review`, `workflows/code-review`, 경로별 동적 로드 |
 
-**6 axis review**: 도메인 일관성 · 테스트 · convention · UI/a11y · secret · observability/perf
+**6 axis review**: 도메인 일관성 · 테스트 · convention · UI/a11y/디자인토큰 · secret · observability/perf/SEO
 
 ---
 
@@ -27,12 +27,14 @@ Stack: **Next.js 15 App Router + TypeScript + Tailwind + TanStack Query + Zustan
 
 | 변경 패턴 | 로드 |
 |---|---|
-| `app/**/page.tsx` | `architecture/route`, `framework/nextjs`, `framework/react` |
-| `app/**/layout.tsx` | `architecture/route`, `framework/nextjs` |
+| `app/**/page.tsx` | `architecture/route`, `framework/nextjs`, `framework/react`, `framework/seo`, `framework/performance` |
+| `app/**/layout.tsx` | `architecture/route`, `framework/nextjs`, `framework/seo`, `framework/design-system` |
 | `app/**/error.tsx` / `loading.tsx` / `not-found.tsx` | `architecture/route`, `observability/observability` |
 | `app/api/**/route.ts` | `architecture/api-client`, `framework/nextjs`, `security/security` |
+| `app/**/sitemap.ts` / `robots.ts` | `framework/seo` |
+| `**/actions/**`, `"use server"` 파일 | `framework/server-actions`, `security/security` |
 | `app/**/_components/**` | `architecture/component`, `framework/react`, `framework/tailwind` |
-| `src/components/ui/**` | `architecture/component`, `framework/tailwind`, `workflows/add-component` |
+| `src/components/ui/**` | `architecture/component`, `framework/tailwind`, `framework/design-system`, `framework/a11y`, `workflows/add-component` |
 | `src/features/<f>/components/**` | `architecture/component`, `framework/react`, `framework/tailwind` |
 | `src/features/<f>/hooks/**` | `architecture/hook`, `framework/react` |
 | `src/features/<f>/api/**` | `architecture/api-client`, `framework/tanstack-query` |
@@ -41,7 +43,7 @@ Stack: **Next.js 15 App Router + TypeScript + Tailwind + TanStack Query + Zustan
 | `*.test.{ts,tsx}` | `framework/vitest`, `workflows/test` |
 | `e2e/**` | `framework/playwright`, `workflows/test` |
 | `next.config.{ts,mjs,js}` | `build/next-config`, `framework/nextjs` |
-| `tailwind.config.{ts,js}` | `framework/tailwind` |
+| `tailwind.config.{ts,js}` | `framework/tailwind`, `framework/design-system` |
 | `tsconfig.json` | `config/tsconfig` |
 | `eslint.config.{ts,js}` / `.prettierrc` | `config/eslint-prettier` |
 | `.env*` | `config/env`, `security/security` |
@@ -80,7 +82,10 @@ Stack: **Next.js 15 App Router + TypeScript + Tailwind + TanStack Query + Zustan
 - 1 PR 1 논리 변경 (`git/pr`)
 - 6 axis review (`git/review`, `workflows/code-review`)
 - secret leak 차단 (`config/env`, `security/security`, `git/gitignore`)
-- a11y (jsx-a11y lint + 수동 점검)
+- a11y (`framework/a11y`, jsx-a11y lint + 수동 점검 + axe)
+- SEO (`framework/seo`, 모든 page metadata)
+- 성능 (`framework/performance`, Core Web Vitals 목표)
+- 디자인 토큰 (`framework/design-system`, raw 색·간격 금지)
 - cleancode·oop (`code/*`)
 
 ## 백엔드(`prompt/`)와 공유

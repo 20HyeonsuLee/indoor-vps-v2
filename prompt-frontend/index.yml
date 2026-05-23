@@ -100,8 +100,12 @@ docs/:
 # ============================================================
 app/:
   _: "Next.js App Router. 라우트·layout·페이지"
-  _conventions: [architecture/route, framework/nextjs, framework/react]
+  _conventions: [architecture/route, framework/nextjs, framework/react, framework/seo, framework/performance]
   _workflows: [code, add-feature]
+  sitemap.ts:
+    _conventions: [framework/seo]
+  robots.ts:
+    _conventions: [framework/seo]
   layout.tsx:
     _: "root layout. providers (QueryClient, theme, fonts)"
     _conventions: [architecture/route, framework/nextjs]
@@ -137,7 +141,7 @@ src/:
     _: "재사용 가능 컴포넌트 (route 무관)"
     ui/:
       _: "디자인 시스템 primitive (Button, Input, Modal 등)"
-      _conventions: [architecture/component, framework/tailwind, framework/react]
+      _conventions: [architecture/component, framework/tailwind, framework/design-system, framework/a11y, framework/react]
       _workflows: [add-component]
     layouts/:
       _: "AppShell, Sidebar 등 layout 단위"
@@ -148,11 +152,14 @@ src/:
     "<feature>/":
       _conventions: [architecture/component, framework/react]
       components/:
-        _conventions: [architecture/component, framework/react, framework/tailwind]
+        _conventions: [architecture/component, framework/react, framework/tailwind, framework/a11y]
       hooks/:
         _conventions: [architecture/hook, framework/react]
       api/:
         _conventions: [architecture/api-client, framework/tanstack-query]
+      actions/:
+        _: "Next.js server action"
+        _conventions: [framework/server-actions, security/security]
       types.ts:
         _conventions: [config/tsconfig]
   hooks/:
@@ -231,7 +238,7 @@ prompt-frontend/:
     docs/:
       _: "ADR·glossary·PRD. 백엔드와 공유"
     framework/:
-      _: "nextjs/react/tailwind/tanstack-query/zustand/react-hook-form/vitest/playwright"
+      _: "nextjs/react/tailwind/tanstack-query/zustand/react-hook-form/vitest/playwright + a11y/seo/performance/design-system/server-actions"
     git/:
       _: "branch/commit/PR/review/release/signing/issue 등. 백엔드와 공유"
     observability/:
