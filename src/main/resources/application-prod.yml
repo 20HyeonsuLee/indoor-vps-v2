@@ -14,9 +14,6 @@ indoor:
   python:
     enabled: ${PYTHON_BRIDGE_ENABLED:false}
     device: ${PYTHON_ML_DEVICE:cuda}
-  rtabmap:
-    reprocess:
-      required: ${RTABMAP_REPROCESS_REQUIRED:false}
   fixture-capture:
     enabled: ${FIXTURE_CAPTURE_ENABLED:false}
     root: ${FIXTURE_CAPTURE_ROOT:/app/test-fixtures/captured}

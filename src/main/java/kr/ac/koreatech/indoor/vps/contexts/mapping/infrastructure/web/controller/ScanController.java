@@ -25,6 +25,7 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingSca
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.ScanFramesRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StartedStreamingScan;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.StreamingScanStorage.StreamingFrameStats;
+import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture.FixtureCaptureService;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.infrastructure.capture.FixtureCaptureService.CaptureRecord;
 import kr.ac.koreatech.indoor.vps.shared.exception.ClientApiException;
@@ -54,6 +55,7 @@ public class ScanController {
     private final MergeScansUseCase mergeScansUseCase;
     private final ProcessFloorUseCase processFloorUseCase;
     private final FixtureCaptureService fixtureCapture;
+    private final IndoorProperties properties;
 
     public ScanController(
             StartStreamingScanUseCase startStreamingScanUseCase,
@@ -63,7 +65,8 @@ public class ScanController {
             ListScanChunksUseCase listScanChunksUseCase,
             MergeScansUseCase mergeScansUseCase,
             ProcessFloorUseCase processFloorUseCase,
-            FixtureCaptureService fixtureCapture
+            FixtureCaptureService fixtureCapture,
+            IndoorProperties properties
     ) {
         this.startStreamingScanUseCase = startStreamingScanUseCase;
         this.pushStreamingFramesUseCase = pushStreamingFramesUseCase;
@@ -73,6 +76,7 @@ public class ScanController {
         this.mergeScansUseCase = mergeScansUseCase;
         this.processFloorUseCase = processFloorUseCase;
         this.fixtureCapture = fixtureCapture;
+        this.properties = properties;
     }
 
     @PostMapping("/floors/{floorId}/scans/chunks")
@@ -168,6 +172,9 @@ public class ScanController {
             @RequestBody MergeScansRequest request,
             @RequestParam(name = "areaId", required = false) UUID areaId
     ) {
+        if (!properties.getMerge().isEnabled()) {
+            throw new ClientApiException(HttpStatus.SERVICE_UNAVAILABLE, "MERGE_DISABLED", "scan merge is disabled");
+        }
         return mergeScansUseCase.merge(floorId, request.chunkIds(), Optional.ofNullable(areaId));
     }
 
@@ -176,6 +183,9 @@ public class ScanController {
             @PathVariable UUID floorId,
             @RequestParam(name = "areaId", required = false) UUID areaId
     ) {
+        if (!properties.getMerge().isEnabled()) {
+            throw new ClientApiException(HttpStatus.SERVICE_UNAVAILABLE, "MERGE_DISABLED", "scan merge is disabled");
+        }
         return mergeScansUseCase.mergeStatus(floorId, Optional.ofNullable(areaId));
     }
 

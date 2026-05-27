@@ -3,23 +3,19 @@ package kr.ac.koreatech.indoor.vps.contexts.mapping.application.build;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.port.RtabmapGraphReader.RtabmapGraphReadException;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.entity.BuildJobEntity;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.BuildJobRepository;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.repository.ScanIngestRepository;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessException;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.RtabmapReprocessor.RtabmapReprocessResult;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanMetadataReader;
-import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.scan.port.ScanMetadataReader.ScanMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -34,34 +30,22 @@ public class BuildJobRunner {
 
     private final BuildJobRepository buildJobRepository;
     private final ScanIngestRepository scanIngestRepository;
-    private final RtabmapGraphReader graphReader;
-    private final RtabmapReprocessor reprocessService;
-    private final ScanMetadataReader metadataReader;
     private final IndoorProperties properties;
     private final TransactionTemplate transactionTemplate;
-    private final BuildGraphPersister graphPersister;
     private final PythonBridge pythonBridge;
     private final String workerId = "spring-build-worker-" + UUID.randomUUID();
 
     public BuildJobRunner(
             BuildJobRepository buildJobRepository,
             ScanIngestRepository scanIngestRepository,
-            RtabmapGraphReader graphReader,
-            RtabmapReprocessor reprocessService,
-            ScanMetadataReader metadataReader,
             IndoorProperties properties,
             TransactionTemplate transactionTemplate,
-            BuildGraphPersister graphPersister,
             PythonBridge pythonBridge
     ) {
         this.buildJobRepository = buildJobRepository;
         this.scanIngestRepository = scanIngestRepository;
-        this.graphReader = graphReader;
-        this.reprocessService = reprocessService;
-        this.metadataReader = metadataReader;
         this.properties = properties;
         this.transactionTemplate = transactionTemplate;
-        this.graphPersister = graphPersister;
         this.pythonBridge = pythonBridge;
     }
 
@@ -103,48 +87,42 @@ public class BuildJobRunner {
             if (!Files.exists(input.dbPath())) {
                 throw new BuildInputException("rtabmap.db not found at " + input.dbPath());
             }
-            RtabmapReprocessResult reprocess = reprocessService.reprocess(input.scanId(), input.dbPath());
-            Path graphDbPath = reprocess.effectiveDbPath();
-            buildSuperpointIndexQuietly(input.scanId(), graphDbPath);
-            validateRtabmapGraph(graphDbPath, input.scanId(), buildJobId);
-            Optional<ScanMetadata> metadata = metadataReader.read(metadataDbPath(input.dbPath()));
-            transactionTemplate.executeWithoutResult(
-                    status -> graphPersister.persistSuccess(buildJobId, input.scanId(), input.dbPath(), reprocess, metadata)
-            );
-        } catch (BuildInputException | RtabmapGraphReadException e) {
-            markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
-        } catch (RtabmapReprocessException e) {
+            Map<String, Object> counts = buildSuperpointIndex(input.scanId(), input.dbPath());
+            markSuccess(buildJobId, counts);
+        } catch (BuildInputException e) {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
         } catch (RuntimeException e) {
             markFailure(buildJobId, BuildFailureReason.internal, e.getMessage());
         }
     }
 
-    private void buildSuperpointIndexQuietly(UUID scanId, Path dbPath) {
+    /**
+     * python.enabled == false: SuperPoint skip, succeeded 처리 (no-op, 테스트 보존).
+     * python.enabled == true 이고 throw: 호출자에게 예외 전파 → build_job FAIL.
+     */
+    private Map<String, Object> buildSuperpointIndex(UUID scanId, Path dbPath) {
         if (!properties.getPython().isEnabled()) {
             log.debug("[SuperPoint] python bridge disabled — skipping index build for scan {}", scanId);
-            return;
+            Map<String, Object> counts = new LinkedHashMap<>();
+            counts.put("superpoint", "skipped");
+            counts.put("reason", "python_disabled");
+            return counts;
         }
-        try {
-            var response = pythonBridge.buildSuperpointIndex(
-                    new BuildSuperpointIndexRequest(scanId.toString(), dbPath.toAbsolutePath().toString())
-            );
-            log.info(
-                    "[SuperPoint] index built for scan {}: frames={}, kp={}, elapsed={}ms, cacheDir={}",
-                    scanId, response.frameCount(), response.totalKeypoints(),
-                    response.elapsedMs(), response.cacheDir()
-            );
-        } catch (Exception e) {
-            log.warn("[SuperPoint] index build failed for scan {} — localize will rebuild on demand: {}",
-                    scanId, e.getMessage());
-        }
-    }
-
-    private void validateRtabmapGraph(Path graphDbPath, UUID scanId, UUID buildJobId) {
-        var graph = graphReader.read(graphDbPath, scanId, buildJobId);
-        if (graph.nodes().isEmpty()) {
-            throw new BuildInputException("rtabmap graph has no nodes");
-        }
+        BuildSuperpointIndexResponse response = pythonBridge.buildSuperpointIndex(
+                new BuildSuperpointIndexRequest(scanId.toString(), dbPath.toAbsolutePath().toString())
+        );
+        log.info(
+                "[SuperPoint] index built for scan {}: frames={}, kp={}, elapsed={}ms, cacheDir={}",
+                scanId, response.frameCount(), response.totalKeypoints(),
+                response.elapsedMs(), response.cacheDir()
+        );
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("superpoint", "built");
+        counts.put("frameCount", response.frameCount());
+        counts.put("totalKeypoints", response.totalKeypoints());
+        counts.put("elapsedMs", response.elapsedMs());
+        counts.put("cacheDir", response.cacheDir());
+        return counts;
     }
 
     private Optional<JobInput> jobInput(UUID buildJobId) {
@@ -158,10 +136,26 @@ public class BuildJobRunner {
         ));
     }
 
-    private void markFailure(UUID buildJobId, BuildFailureReason reason, String detail) {
+    private void markSuccess(UUID buildJobId, Map<String, Object> counts) {
         transactionTemplate.executeWithoutResult(status -> {
             BuildJobEntity job = buildJobRepository.findById(buildJobId).orElseThrow();
-            if (job.getState() == BuildState.succeeded) {
+            if (job.getState() != BuildState.running) {
+                return;
+            }
+            job.markSucceeded(counts);
+            job.getScan().changeBuildState(BuildState.succeeded);
+            buildJobRepository.saveAndFlush(job);
+            scanIngestRepository.saveAndFlush(job.getScan());
+        });
+    }
+
+    private void markFailure(UUID buildJobId, BuildFailureReason reason, String detail) {
+        // python bridge timeout 등으로 설정된 thread interrupt flag를 clear.
+        // 안 그러면 실패 처리 트랜잭션의 DB connection 획득이 interrupt로 깨져 build_job이 running에 고착된다.
+        Thread.interrupted();
+        transactionTemplate.executeWithoutResult(status -> {
+            BuildJobEntity job = buildJobRepository.findById(buildJobId).orElseThrow();
+            if (job.getState() != BuildState.running) {
                 return;
             }
             job.markFailed(reason, detail);
@@ -196,10 +190,6 @@ public class BuildJobRunner {
             return path.getParent().resolve("rtabmap.db");
         }
         return path.resolve("rtabmap.db");
-    }
-
-    private Path metadataDbPath(Path rtabmapDbPath) {
-        return rtabmapDbPath.resolveSibling("scan_metadata.db");
     }
 
     private static class BuildInputException extends RuntimeException {

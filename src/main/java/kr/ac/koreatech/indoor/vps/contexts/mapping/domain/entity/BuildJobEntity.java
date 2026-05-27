@@ -138,11 +138,6 @@ public class BuildJobEntity {
         this.counts = null;
     }
 
-    public void markPersisting() {
-        this.currentStep = BuildStep.persist;
-        this.progress = 0.95;
-    }
-
     public void markSucceeded(Map<String, Object> counts) {
         this.state = BuildState.succeeded;
         this.currentStep = BuildStep.done;
