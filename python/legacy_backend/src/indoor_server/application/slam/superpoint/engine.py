@@ -2,6 +2,7 @@
 import asyncio
 import io
 import logging
+import math
 import os
 import time
 
@@ -38,6 +39,186 @@ def _rotation_to_quat(R: np.ndarray):
     if qw < 0:
         qx, qy, qz, qw = -qx, -qy, -qz, -qw
     return float(qx), float(qy), float(qz), float(qw)
+
+
+def _matrix_pose_to_dict(T: np.ndarray) -> dict:
+    qx, qy, qz, qw = _rotation_to_quat(T[:3, :3])
+    t = T[:3, 3]
+    return {
+        'x': float(t[0]), 'y': float(t[1]), 'z': float(t[2]),
+        'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
+    }
+
+
+def _pose_position(pose: dict) -> np.ndarray:
+    return np.array([pose['x'], pose['y'], pose['z']], dtype=np.float64)
+
+
+def _pose_rotation(pose: dict) -> Rotation:
+    return Rotation.from_quat([pose['qx'], pose['qy'], pose['qz'], pose['qw']])
+
+
+def _yaw_from_rotation(rot: Rotation) -> float:
+    R = rot.as_matrix()
+    return math.atan2(float(R[1, 0]), float(R[0, 0]))
+
+
+def _wrap_angle(rad: float) -> float:
+    return math.atan2(math.sin(rad), math.cos(rad))
+
+
+def _yaw_diff(a: float, b: float) -> float:
+    return abs(_wrap_angle(a - b))
+
+
+def _blend_pose(raw_pose: dict, anchor_pose: dict, pos_alpha: float, rot_alpha: float) -> dict:
+    raw_pos = _pose_position(raw_pose)
+    anchor_pos = _pose_position(anchor_pose)
+    pos = anchor_pos * (1.0 - pos_alpha) + raw_pos * pos_alpha
+
+    q_anchor = _pose_rotation(anchor_pose).as_quat()
+    q_raw = _pose_rotation(raw_pose).as_quat()
+    if np.dot(q_anchor, q_raw) < 0:
+        q_raw = -q_raw
+    q = q_anchor * (1.0 - rot_alpha) + q_raw * rot_alpha
+    q_norm = np.linalg.norm(q)
+    if q_norm <= 1e-9:
+        q = q_anchor
+    else:
+        q = q / q_norm
+    qx, qy, qz, qw = q
+    if qw < 0:
+        qx, qy, qz, qw = -qx, -qy, -qz, -qw
+    return {
+        'x': float(pos[0]), 'y': float(pos[1]), 'z': float(pos[2]),
+        'qx': float(qx), 'qy': float(qy), 'qz': float(qz), 'qw': float(qw),
+    }
+
+
+def _stabilize_pose(raw_pose: dict, anchor_pose: dict | None) -> tuple[dict, dict]:
+    """Blend implausible PnP jumps back toward the matched keyframe pose."""
+    if anchor_pose is None:
+        return raw_pose, {
+            'anchorApplied': False,
+            'positionDeltaM': None,
+            'yawDeltaDeg': None,
+            'positionAlpha': 1.0,
+            'rotationAlpha': 1.0,
+        }
+
+    pos_delta = float(np.linalg.norm(_pose_position(raw_pose) - _pose_position(anchor_pose)))
+    yaw_delta_deg = math.degrees(_yaw_diff(
+        _yaw_from_rotation(_pose_rotation(raw_pose)),
+        _yaw_from_rotation(_pose_rotation(anchor_pose)),
+    ))
+
+    if pos_delta <= 0.75:
+        pos_alpha = 0.85
+    elif pos_delta <= 1.50:
+        pos_alpha = 0.50
+    elif pos_delta <= 2.50:
+        pos_alpha = 0.25
+    else:
+        pos_alpha = 0.0
+
+    if yaw_delta_deg <= 8.0:
+        rot_alpha = 0.85
+    elif yaw_delta_deg <= 18.0:
+        rot_alpha = 0.50
+    elif yaw_delta_deg <= 35.0:
+        rot_alpha = 0.20
+    else:
+        rot_alpha = 0.0
+
+    return _blend_pose(raw_pose, anchor_pose, pos_alpha, rot_alpha), {
+        'anchorApplied': True,
+        'positionDeltaM': pos_delta,
+        'yawDeltaDeg': yaw_delta_deg,
+        'positionAlpha': pos_alpha,
+        'rotationAlpha': rot_alpha,
+    }
+
+
+def _pose_distance(a: dict, b: dict) -> float:
+    return float(np.linalg.norm(_pose_position(a) - _pose_position(b)))
+
+
+def _pose_yaw_distance_deg(a: dict, b: dict) -> float:
+    return math.degrees(_yaw_diff(
+        _yaw_from_rotation(_pose_rotation(a)),
+        _yaw_from_rotation(_pose_rotation(b)),
+    ))
+
+
+def _average_cluster_pose(candidates: list[dict]) -> dict:
+    positions = np.stack([_pose_position(c['stable_pose']) for c in candidates], axis=0)
+    pos = np.median(positions, axis=0)
+
+    quats = np.stack([
+        np.array([
+            c['stable_pose']['qx'], c['stable_pose']['qy'],
+            c['stable_pose']['qz'], c['stable_pose']['qw'],
+        ], dtype=np.float64)
+        for c in candidates
+    ], axis=0)
+    ref = quats[0]
+    for i in range(len(quats)):
+        if np.dot(ref, quats[i]) < 0:
+            quats[i] = -quats[i]
+    q = np.mean(quats, axis=0)
+    q_norm = np.linalg.norm(q)
+    if q_norm <= 1e-9:
+        q = ref
+    else:
+        q = q / q_norm
+    qx, qy, qz, qw = q
+    if qw < 0:
+        qx, qy, qz, qw = -qx, -qy, -qz, -qw
+    return {
+        'x': float(pos[0]), 'y': float(pos[1]), 'z': float(pos[2]),
+        'qx': float(qx), 'qy': float(qy), 'qz': float(qz), 'qw': float(qw),
+    }
+
+
+def _select_consensus(candidates: list[dict]) -> dict | None:
+    if not candidates:
+        return None
+    ordered = sorted(candidates, key=lambda c: c['score'], reverse=True)
+    clusters: list[list[dict]] = []
+
+    for cand in ordered:
+        for cluster in clusters:
+            ref = cluster[0]
+            if (
+                _pose_distance(cand['stable_pose'], ref['stable_pose']) <= 1.50
+                and _pose_yaw_distance_deg(cand['stable_pose'], ref['stable_pose']) <= 25.0
+            ):
+                cluster.append(cand)
+                break
+        else:
+            clusters.append([cand])
+
+    def cluster_key(cluster: list[dict]) -> tuple:
+        image_votes = len({c['matched_image_index'] for c in cluster})
+        return (
+            image_votes,
+            sum(c['score'] for c in cluster),
+            sum(c['num_matches'] for c in cluster),
+            -min(float(c.get('reprojection_error', 999.0)) for c in cluster),
+        )
+
+    best_cluster = max(clusters, key=cluster_key)
+    best = max(best_cluster, key=lambda c: c['score'])
+    result = dict(best)
+    if len(best_cluster) >= 2:
+        result['pose'] = _average_cluster_pose(best_cluster)
+        result['confidence'] = float(np.mean([c['confidence'] for c in best_cluster]))
+        result['num_matches'] = int(max(c['num_matches'] for c in best_cluster))
+        result['consensus_size'] = len({c['matched_image_index'] for c in best_cluster})
+    else:
+        result['pose'] = best['stable_pose']
+        result['consensus_size'] = 1
+    return result
 
 
 def _horn_align(p_src: np.ndarray, p_dst: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -173,7 +354,7 @@ class SuperPointEngine:
         #   z_up(rtabmap)   -> -y_down(opencv)     -> column [0, -1, 0]
         C = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]], dtype=np.float64)
 
-        best: dict | None = None
+        pose_candidates: list[dict] = []
         localize_started_at = time.perf_counter()
 
         for img_idx, img_bytes in enumerate(images):
@@ -182,6 +363,7 @@ class SuperPointEngine:
             gray = _to_gray_float(img_bytes)
             if gray is None:
                 continue
+            image_candidates: list[dict] = []
             decode_ms = self._elapsed_ms(stage_started_at)
 
             stage_started_at = time.perf_counter()
@@ -293,6 +475,18 @@ class SuperPointEngine:
                         # denominator(매칭 후 3D 유효 쌍) 기준이라 직접 비교 가능.
                         confidence = min(0.99, max(0.01, n_in / max(n_pairs, 1)))
                         qx, qy, qz, qw = _rotation_to_quat(R_cw)
+                        raw_pose = {
+                            'x': float(t_cw[0]), 'y': float(t_cw[1]), 'z': float(t_cw[2]),
+                            'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
+                        }
+                        anchor_matrix = loaded.keyframe_poses.get(node_id)
+                        anchor_pose = (
+                            _matrix_pose_to_dict(anchor_matrix)
+                            if anchor_matrix is not None
+                            else None
+                        )
+                        stable_pose, anchor_debug = _stabilize_pose(raw_pose, anchor_pose)
+                        score = float(n_in * (0.5 + confidence))
                         logger.warning(
                             f"[RGBD-debug] WIN node={node_id} kf_centroid=("
                             f"{w_centroid[0]:.2f},{w_centroid[1]:.2f},{w_centroid[2]:.2f}) "
@@ -304,21 +498,20 @@ class SuperPointEngine:
                             'confidence': confidence,
                             'matched_image_index': img_idx,
                             'method_used': 'RGBD',
-                            'pose': {
-                                'x': float(t_cw[0]), 'y': float(t_cw[1]), 'z': float(t_cw[2]),
-                                'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
-                            },
+                            'pose': stable_pose,
+                            'stable_pose': stable_pose,
+                            'raw_pose': raw_pose,
+                            'matched_node_id': int(node_id),
+                            'score': score,
+                            'reprojection_error': 0.0,
+                            'coverage': 1.0,
+                            'anchor_debug': anchor_debug,
                         }
                         # RGBD 는 PnP 보다 항상 우선 — 단 confidence ≥ 0.3 일 때만.
                         # 그 미만이면 unreliable → PnP fallback 허용.
-                        prev_is_rgbd = best is not None and best.get('method_used') == 'RGBD'
                         rgbd_reliable = confidence >= 0.30
-                        if rgbd_reliable and (
-                            best is None
-                            or not prev_is_rgbd
-                            or n_in > best['num_matches']
-                        ):
-                            best = candidate
+                        if rgbd_reliable:
+                            image_candidates.append(candidate)
                         continue
                     # RGBD failed (too few valid pairs or RANSAC underflow) → fall back to PnP.
 
@@ -400,6 +593,14 @@ class SuperPointEngine:
                 )
                 pose_ms = self._elapsed_ms(stage_started_at)
 
+                projected, _ = cv2.projectPoints(pts_3d_in, rvec, tvec, K, None)
+                projected = projected.reshape(-1, 2)
+                reproj_errors = np.linalg.norm(projected - pts_2d_in, axis=1)
+                reproj_error = float(np.median(reproj_errors))
+                h, w = gray.shape[:2]
+                span = np.maximum(pts_2d_in.max(axis=0) - pts_2d_in.min(axis=0), 0.0)
+                coverage = float((span[0] / max(w, 1)) * (span[1] / max(h, 1)))
+
                 # Convert PnP result to RTABMap world pose
                 # (same convention as RTABMapEngine / map_manager)
                 R_w2c, _ = cv2.Rodrigues(rvec)
@@ -408,26 +609,41 @@ class SuperPointEngine:
 
                 qx, qy, qz, qw = _rotation_to_quat(R_cw)
                 confidence = min(0.99, max(0.01, n_in / len(pts_3d)))
+                raw_pose = {
+                    'x': float(t_cw[0]), 'y': float(t_cw[1]), 'z': float(t_cw[2]),
+                    'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
+                }
+                anchor_matrix = loaded.keyframe_poses.get(node_id)
+                anchor_pose = (
+                    _matrix_pose_to_dict(anchor_matrix)
+                    if anchor_matrix is not None
+                    else None
+                )
+                stable_pose, anchor_debug = _stabilize_pose(raw_pose, anchor_pose)
+                coverage_factor = min(1.0, max(0.25, coverage / 0.10))
+                reproj_factor = 1.0 / max(1.0, reproj_error / 3.0)
+                score = float(n_in * (0.5 + confidence) * coverage_factor * reproj_factor)
 
                 candidate = {
                     'num_matches': n_in,
                     'confidence': confidence,
                     'matched_image_index': img_idx,
                     'method_used': 'PnP',
-                    'pose': {
-                        'x': float(t_cw[0]), 'y': float(t_cw[1]), 'z': float(t_cw[2]),
-                        'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw,
-                    },
+                    'pose': stable_pose,
+                    'stable_pose': stable_pose,
+                    'raw_pose': raw_pose,
+                    'matched_node_id': int(node_id),
+                    'score': score,
+                    'reprojection_error': reproj_error,
+                    'coverage': coverage,
+                    'anchor_debug': anchor_debug,
                 }
-                # 이미 RGBD 가 best 면 PnP 후보는 무시 (RGBD 우선).
-                if best is not None and best.get('method_used') == 'RGBD':
-                    continue
-                if best is None or n_in > best['num_matches']:
-                    best = candidate
+                image_candidates.append(candidate)
                 logger.info(
                     "[SuperPointTrace] map=%s img=%d node=%s lightglueMs=%.1f "
                     "poseMs=%.1f totalCandidateMs=%.1f method=PnP matches=%d "
-                    "valid3d=%d inliers=%d confidence=%.3f early=%s",
+                    "valid3d=%d inliers=%d confidence=%.3f reproj=%.2f coverage=%.3f "
+                    "anchor=%s posDelta=%s yawDelta=%s early=%s",
                     map_id,
                     img_idx,
                     node_id,
@@ -438,37 +654,37 @@ class SuperPointEngine:
                     len(pts_3d),
                     n_in,
                     confidence,
+                    reproj_error,
+                    coverage,
+                    anchor_debug.get('anchorApplied'),
+                    anchor_debug.get('positionDeltaM'),
+                    anchor_debug.get('yawDeltaDeg'),
                     self._good_enough(candidate),
                 )
-                if self._good_enough(candidate):
-                    logger.info(
-                        "[SuperPoint] early-stop map=%s img=%d node=%s inliers=%d "
-                        "confidence=%.3f method=PnP imageMs=%.1f totalMs=%.1f",
-                        map_id,
-                        img_idx,
-                        node_id,
-                        n_in,
-                        confidence,
-                        self._elapsed_ms(image_started_at),
-                        self._elapsed_ms(localize_started_at),
-                    )
-                    return {**candidate, 'map_id': map_id, 'method': 'SuperPoint+LightGlue'}
+
+            if image_candidates:
+                image_best = max(image_candidates, key=lambda c: c['score'])
+                pose_candidates.append(image_best)
+            else:
+                image_best = None
 
             logger.info(
                 "[SuperPointTrace] map=%s img=%d imageTotalMs=%.1f bestConfidence=%.3f bestMatches=%d",
                 map_id,
                 img_idx,
                 self._elapsed_ms(image_started_at),
-                float(best["confidence"]) if best is not None else 0.0,
-                int(best["num_matches"]) if best is not None else 0,
+                float(image_best["confidence"]) if image_best is not None else 0.0,
+                int(image_best["num_matches"]) if image_best is not None else 0,
             )
 
+        best = _select_consensus(pose_candidates)
         if best is None:
             raise ValueError("SuperPoint+LightGlue: insufficient matches")
 
         logger.info(
             f"[SuperPoint] map={map_id} inliers={best['num_matches']} "
-            f"confidence={best['confidence']:.3f} method={best.get('method_used')}"
+            f"confidence={best['confidence']:.3f} method={best.get('method_used')} "
+            f"consensus={best.get('consensus_size', 1)} node={best.get('matched_node_id')}"
         )
         return {**best, 'map_id': map_id, 'method': 'SuperPoint+LightGlue'}
 
