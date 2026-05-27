@@ -20,3 +20,6 @@ tmp/
 test-fixtures/captured/
 
 src/main/resources/application-local.yml
+
+# AI prompt/convention SSOT — local only, not part of product repo
+prompt/
