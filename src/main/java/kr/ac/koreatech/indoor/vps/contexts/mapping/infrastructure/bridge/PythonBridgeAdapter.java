@@ -14,6 +14,8 @@ import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeCommand;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.HealthBridgeResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.LocalizeBridgeResponse;
@@ -62,6 +64,11 @@ public class PythonBridgeAdapter implements PythonBridge {
     @Override
     public BuildSuperpointIndexResponse buildSuperpointIndex(BuildSuperpointIndexRequest request) {
         return call(BridgeCommand.BUILD_SUPERPOINT_INDEX, request, BuildSuperpointIndexResponse.class);
+    }
+
+    @Override
+    public ExportPointcloudResponse exportPointcloud(ExportPointcloudRequest request) {
+        return call(BridgeCommand.EXPORT_POINTCLOUD, request, ExportPointcloudResponse.class);
     }
 
     private <T> T call(BridgeCommand command, Object payload, Class<T> responseType) {

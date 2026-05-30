@@ -64,6 +64,22 @@ public final class BridgeContracts {
             String cacheDir,
             int frameCount,
             long totalKeypoints,
+            long elapsedMs,
+            long bytes
+    ) {
+    }
+
+    public record ExportPointcloudRequest(
+            String scanId,
+            String dbPath,
+            String outputPath
+    ) {
+    }
+
+    public record ExportPointcloudResponse(
+            String plyPath,
+            long pointCount,
+            long fileSize,
             long elapsedMs
     ) {
     }

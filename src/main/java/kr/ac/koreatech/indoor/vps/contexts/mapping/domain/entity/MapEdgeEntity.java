@@ -42,6 +42,9 @@ public class MapEdgeEntity {
     @Column(name = "length_m", nullable = false)
     private double lengthM;
 
+    @Column(name = "width_m")
+    private Double widthM;
+
     @Column(name = "area_id", nullable = false)
     private UUID areaId;
 
@@ -106,5 +109,31 @@ public class MapEdgeEntity {
 
     public double getLengthM() {
         return lengthM;
+    }
+
+    public Double getWidthM() {
+        return widthM;
+    }
+
+    /** Cross-scan graph fusion 시 follower → leader 노드 통합 후 edge 참조 재작성용. */
+    public void changeFromNodeId(UUID newFromNodeId) {
+        this.fromNodeId = newFromNodeId;
+    }
+
+    public void changeToNodeId(UUID newToNodeId) {
+        this.toNodeId = newToNodeId;
+    }
+
+    public void relocate(LineString newGeom, double newLengthM) {
+        this.geom = newGeom;
+        this.lengthM = newLengthM;
+    }
+
+    public void changeEdgeType(EdgeType newEdgeType) {
+        this.edgeType = newEdgeType;
+    }
+
+    public void changeWidthM(Double newWidthM) {
+        this.widthM = newWidthM;
     }
 }

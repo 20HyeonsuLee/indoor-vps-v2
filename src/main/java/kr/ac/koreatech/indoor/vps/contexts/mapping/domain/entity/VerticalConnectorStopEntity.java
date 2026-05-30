@@ -75,4 +75,16 @@ public class VerticalConnectorStopEntity {
         this.poiCanonical = newPoi;
         this.routeNodeId = newRouteNodeId;
     }
+
+    public void attachRouteNode(UUID newRouteNodeId) {
+        this.routeNodeId = newRouteNodeId;
+    }
+
+    public void detachRouteNode() {
+        this.routeNodeId = null;
+    }
+
+    public void changeArea(FloorAreaEntity newArea) {
+        this.area = newArea;
+    }
 }

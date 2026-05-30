@@ -143,4 +143,65 @@ public class PoiCanonicalEntity {
     public Double getLlmConfidence() {
         return llmConfidence;
     }
+
+    public static PoiCanonicalEntity createManual(
+            UUID canonicalId,
+            UUID scanId,
+            BuildingEntity building,
+            FloorEntity floor,
+            FloorAreaEntity area,
+            String name,
+            String category,
+            Point worldPose,
+            Point displayPoint,
+            UUID routeNodeId
+    ) {
+        PoiCanonicalEntity entity = new PoiCanonicalEntity();
+        entity.canonicalId = canonicalId;
+        entity.scanId = scanId;
+        entity.building = building;
+        entity.floor = floor;
+        entity.area = area;
+        entity.label = name;
+        entity.name = name;
+        entity.category = category;
+        entity.worldPose = worldPose;
+        entity.displayPoint = displayPoint;
+        entity.routeNodeId = routeNodeId;
+        entity.needsReview = false;
+        return entity;
+    }
+
+    public void relocate(Point newWorldPose, Point newDisplayPoint) {
+        if (newWorldPose != null) {
+            this.worldPose = newWorldPose;
+        }
+        if (newDisplayPoint != null) {
+            this.displayPoint = newDisplayPoint;
+        }
+    }
+
+    public void rename(String newName, String newCategory, String newLabel) {
+        if (newName != null) {
+            this.name = newName;
+        }
+        if (newCategory != null) {
+            this.category = newCategory;
+        }
+        if (newLabel != null) {
+            this.label = newLabel;
+        }
+    }
+
+    public void attachRouteNode(UUID newRouteNodeId) {
+        this.routeNodeId = newRouteNodeId;
+    }
+
+    public void detachRouteNode() {
+        this.routeNodeId = null;
+    }
+
+    public void markReviewed() {
+        this.needsReview = false;
+    }
 }

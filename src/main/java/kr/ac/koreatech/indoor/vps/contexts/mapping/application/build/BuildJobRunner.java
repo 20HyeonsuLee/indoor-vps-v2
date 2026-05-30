@@ -10,6 +10,8 @@ import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.config.IndoorProperties;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudRequest;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
@@ -88,6 +90,7 @@ public class BuildJobRunner {
                 throw new BuildInputException("rtabmap.db not found at " + input.dbPath());
             }
             Map<String, Object> counts = buildSuperpointIndex(input.scanId(), input.dbPath());
+            exportPointcloud(input.scanId(), input.dbPath(), counts);
             markSuccess(buildJobId, counts);
         } catch (BuildInputException e) {
             markFailure(buildJobId, BuildFailureReason.rtabmap_data_not_ready, e.getMessage());
@@ -122,7 +125,36 @@ public class BuildJobRunner {
         counts.put("totalKeypoints", response.totalKeypoints());
         counts.put("elapsedMs", response.elapsedMs());
         counts.put("cacheDir", response.cacheDir());
+        counts.put("bytes", response.bytes());
         return counts;
+    }
+
+    /**
+     * SuperPoint index 빌드 후 rtabmap.db에서 cloud.ply를 export (그래프 에디터 시각화용).
+     * python.enabled == false: skip. throw 시 호출자에게 전파 → build_job FAIL.
+     */
+    private void exportPointcloud(UUID scanId, Path dbPath, Map<String, Object> counts) {
+        if (!properties.getPython().isEnabled()) {
+            log.debug("[Pointcloud] python bridge disabled — skipping export for scan {}", scanId);
+            counts.put("pointcloud", "skipped");
+            return;
+        }
+        Path outputPath = dbPath.toAbsolutePath().getParent().resolve("cloud.ply");
+        ExportPointcloudResponse response = pythonBridge.exportPointcloud(
+                new ExportPointcloudRequest(
+                        scanId.toString(),
+                        dbPath.toAbsolutePath().toString(),
+                        outputPath.toString()
+                )
+        );
+        log.info(
+                "[Pointcloud] exported for scan {}: points={}, bytes={}, elapsed={}ms, path={}",
+                scanId, response.pointCount(), response.fileSize(),
+                response.elapsedMs(), response.plyPath()
+        );
+        counts.put("pointcloud", "exported");
+        counts.put("plyPointCount", response.pointCount());
+        counts.put("plyBytes", response.fileSize());
     }
 
     private Optional<JobInput> jobInput(UUID buildJobId) {

@@ -14,7 +14,7 @@ from pathlib import Path
 import sys
 
 
-COMMANDS = ("health", "localize", "merge_scan", "build_superpoint_index")
+COMMANDS = ("health", "localize", "merge_scan", "build_superpoint_index", "export_pointcloud")
 
 
 class BridgeContractError(ValueError):
@@ -75,6 +75,13 @@ def dispatch(command: str, payload: dict[str, object]) -> int:
             print_json({"ok": True, "command": command})
             return 0
         return build_superpoint_index(payload)
+    if command == "export_pointcloud":
+        validate_export_pointcloud(payload)
+        if payload.get("contractOnly") is True:
+            print_json({"ok": True, "command": command})
+            return 0
+        print_json(export_pointcloud(payload))
+        return 0
     return fail("BRIDGE_UNKNOWN_COMMAND", f"unknown bridge command: {command}", {"commands": list(COMMANDS)})
 
 
@@ -324,6 +331,164 @@ def build_superpoint_index(payload: dict[str, object]) -> int:
         "bytes": cache_bytes,
         "elapsedMs": elapsed_ms,
     })
+    return 0
+
+
+def validate_export_pointcloud(payload: dict[str, object]) -> None:
+    require_string(payload, "scanId")
+    require_string(payload, "dbPath")
+    require_string(payload, "outputPath")
+
+
+def export_pointcloud(payload: dict[str, object]) -> dict[str, object]:
+    return asyncio.run(export_pointcloud_async(payload))
+
+
+async def export_pointcloud_async(payload: dict[str, object]) -> dict[str, object]:
+    import shutil
+    import time
+
+    db_path = Path(str(payload["dbPath"]))
+    output_path = Path(str(payload["outputPath"]))
+    if not db_path.exists():
+        raise BridgeRuntimeError(
+            "BRIDGE_EXPORT_DB_MISSING",
+            f"rtabmap.db not found: {db_path}",
+            {"dbPath": str(db_path)},
+        )
+    binary = os.environ.get("RTABMAP_EXPORT_BIN") or shutil.which("rtabmap-export")
+    if not binary:
+        raise BridgeRuntimeError(
+            "BRIDGE_RTABMAP_EXPORT_UNAVAILABLE",
+            "rtabmap-export binary not on PATH",
+            {"hint": "install rtabmap-tools or set RTABMAP_EXPORT_BIN"},
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.exists():
+        output_path.unlink()
+    work_dir = output_path.parent / "_ply_export_work"
+    if work_dir.exists():
+        for leftover in work_dir.iterdir():
+            try:
+                leftover.unlink()
+            except OSError:
+                pass
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    t0 = time.time()
+    # rtabmap-export writes <output_dir>/<prefix>_cloud.ply (or <prefix>.ply).
+    command = [
+        binary,
+        # --cloud: ARKit/RGB-D depth는 Data.scan이 아닌 Data.depth에 들어가므로 cloud 모드.
+        "--cloud",
+        # opt=2: reprocess + detectMoreLoopClosures가 Admin.opt_poses에 저장한
+        # graph-optimized pose 활용 (default 0은 재최적화 시도. 우리는 이미
+        # optimization 완료된 결과 사용해 일관성 유지).
+        "--opt", "2",
+        # decimation 1 = depth image 전체 픽셀 사용 (default 4는 1/4 down → 디테일 손실).
+        "--decimation", "1",
+        # 10cm voxel. 시각화 부담 줄이는 우선.
+        "--voxel", "0.10",
+        # ARKit sceneDepth 신뢰 범위 5m (≥6m는 노이즈 폭증).
+        "--max_range", "5",
+        # Isolated outlier 제거. noise_k=5는 rtabmap default. ARKit raw depth는
+        # view-간 일관성이 약해 noise_k=2(이전값)에선 ray-방향 줄무늬 outlier가
+        # 그대로 남았음 → 5cm 반경에 이웃 5개 미만이면 컷으로 강화 (point ~76% 컷).
+        "--noise_radius", "0.05",
+        "--noise_k", "5",
+        # ARKit confidenceMap (Low=0/Med=50/High=100) 임계치. 클라가 depth_confidence를
+        # 보내기 시작하면 신뢰도 50 미만 픽셀이 자동 컷되어 노이즈가 더 깎임.
+        # depth_confidence 칼럼이 NULL인 기존 scan은 이 옵션이 무시되므로 BC 유지.
+        "--depth_confidence", "50",
+        "--output", "cloud",
+        "--output_dir", str(work_dir),
+        str(db_path),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    timeout = float(payload.get("timeoutSeconds") or 600.0)
+    try:
+        _stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except TimeoutError as exc:
+        proc.kill()
+        await proc.wait()
+        raise BridgeRuntimeError(
+            "BRIDGE_RTABMAP_EXPORT_TIMEOUT",
+            "rtabmap-export timed out",
+            {"timeoutSeconds": timeout},
+        ) from exc
+    if proc.returncode != 0:
+        stderr_text = stderr_b.decode(errors="replace") if stderr_b else ""
+        raise BridgeRuntimeError(
+            "BRIDGE_RTABMAP_EXPORT_FAILED",
+            "rtabmap-export exited with non-zero status",
+            {"exitCode": proc.returncode, "stderrTail": stderr_text[-1500:]},
+        )
+
+    produced = _pick_exported_ply(work_dir)
+    if produced is None:
+        raise BridgeRuntimeError(
+            "BRIDGE_RTABMAP_EXPORT_NO_OUTPUT",
+            "rtabmap-export produced no .ply file",
+            {"workDir": str(work_dir)},
+        )
+    produced.replace(output_path)
+    _cleanup_work_dir(work_dir)
+
+    return {
+        "plyPath": str(output_path),
+        "pointCount": _count_ply_vertices(output_path),
+        "fileSize": output_path.stat().st_size,
+        "elapsedMs": int((time.time() - t0) * 1000),
+    }
+
+
+def _pick_exported_ply(work_dir: Path) -> Path | None:
+    for name in ("cloud.ply", "cloud_cloud.ply"):
+        candidate = work_dir / name
+        if candidate.exists():
+            return candidate
+    found = sorted(work_dir.glob("*.ply"))
+    return found[0] if found else None
+
+
+def _cleanup_work_dir(work_dir: Path) -> None:
+    if not work_dir.exists():
+        return
+    for leftover in work_dir.iterdir():
+        try:
+            leftover.unlink()
+        except OSError:
+            pass
+    try:
+        work_dir.rmdir()
+    except OSError:
+        pass
+
+
+def _count_ply_vertices(path: Path) -> int:
+    try:
+        with path.open("rb") as file:
+            for _ in range(64):
+                raw = file.readline()
+                if not raw:
+                    return 0
+                line = raw.decode(errors="replace").strip()
+                if line.startswith("element vertex"):
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        try:
+                            return int(parts[2])
+                        except ValueError:
+                            return 0
+                if line == "end_header":
+                    return 0
+    except OSError:
+        return 0
     return 0
 
 

@@ -101,4 +101,32 @@ public class FloorAreaPolygonEntity {
     public List<Long> getSourceMarkIds() {
         return sourceMarkIds;
     }
+
+    public static FloorAreaPolygonEntity createManual(
+            UUID areaPolygonId,
+            UUID scanId,
+            UUID buildJobId,
+            FloorEntity floor,
+            FloorAreaEntity floorArea,
+            String markSessionId,
+            Polygon polygon
+    ) {
+        FloorAreaPolygonEntity entity = new FloorAreaPolygonEntity();
+        entity.areaId = areaPolygonId;
+        entity.scanId = scanId;
+        entity.buildJobId = buildJobId;
+        entity.floor = floor;
+        entity.floorArea = floorArea;
+        entity.markSessionId = markSessionId;
+        entity.polygon = polygon;
+        return entity;
+    }
+
+    public void replacePolygon(Polygon newPolygon) {
+        this.polygon = newPolygon;
+    }
+
+    public boolean isManual() {
+        return "manual_edit".equals(this.markSessionId);
+    }
 }
