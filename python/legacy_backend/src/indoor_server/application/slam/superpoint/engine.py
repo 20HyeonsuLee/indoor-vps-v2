@@ -155,6 +155,11 @@ class SuperPointEngine:
 
                 # Convert PnP result to RTABMap world pose
                 # (same convention as RTABMapEngine / map_manager)
+                #
+                # query 이미지를 portrait로 회전(매칭 목적, in-plane roll)해 PnP를 풀어도
+                # 광축 방향은 불변이라 결과 pose는 db world frame과 일관된 올바른 pose다.
+                # world3d는 Admin.opt_poses(graph-optimized) 기준이므로 이 pose도
+                # cloud/POI/경로와 동일 frame → iOS에서 방향이 정합한다.
                 R_w2c, _ = cv2.Rodrigues(rvec)
                 R_cw = R_w2c.T @ C
                 t_cw = (-R_w2c.T @ tvec).flatten()
@@ -192,4 +197,6 @@ class SuperPointEngine:
         db_path: str | None = None,
         **kwargs,
     ) -> dict:
-        return await asyncio.to_thread(self._localize_sync, map_id, images, intrinsics, db_path)
+        return await asyncio.to_thread(
+            self._localize_sync, map_id, images, intrinsics, db_path
+        )

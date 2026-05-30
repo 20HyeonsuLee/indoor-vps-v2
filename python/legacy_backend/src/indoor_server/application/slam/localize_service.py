@@ -24,7 +24,9 @@ def _get_sp_engine() -> SuperPointEngine:
     return _sp_engine
 
 
-def _resize_query_images(images: list[bytes], *, width: int, height: int) -> list[bytes]:
+def _resize_query_images(
+    images: list[bytes], *, width: int, height: int
+) -> list[bytes]:
     """Query 이미지를 인덱스 해상도(width x height)로 맞춘다.
 
     EXIF 회전 보정 후, 종횡비 방향(가로/세로)이 인덱스와 다르면 90도 회전한다.
@@ -32,6 +34,7 @@ def _resize_query_images(images: list[bytes], *, width: int, height: int) -> lis
     EXIF 보정만으로는 portrait 인덱스(720x960)와 어긋나 resize 시 stretch되어
     SuperPoint 매칭이 전멸한다. 종횡비 기반 회전으로 이를 막는다.
     회전 방향은 시계방향 90도(ROTATE_270) — iOS 후면 카메라 raw 기준 정방향.
+    회전은 매칭 목적의 in-plane(roll) 정렬이라 pose 광축 방향은 불변 → pose 역보정 불요.
     """
     resized = []
     for img_bytes in images:

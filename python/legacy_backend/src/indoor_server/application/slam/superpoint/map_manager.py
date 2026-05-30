@@ -13,6 +13,7 @@ import sqlite3
 import struct
 import threading
 import time
+import zlib
 from collections import OrderedDict
 from pathlib import Path
 
@@ -25,17 +26,73 @@ logger = logging.getLogger(__name__)
 MAX_CACHED_MAPS = 5
 TOP_K = 5
 
+# Bump when the build-time world3d derivation changes so stale caches rebuild.
+# v10: prefer Admin.opt_poses (loop-closure + graph optimization) over raw Node.pose.
+#      rtabmap-export(cloud)·map_node(graph editor)는 opt_poses 기준이라, SuperPoint
+#      world3d 도 동일 frame 이어야 localize pose 가 cloud/POI/경로와 정합한다.
+#      raw Node.pose 로 빌드하면 두 frame 이 graph-optimization 만큼(예: 149° 전역
+#      회전) 틀어져 localize 방향이 통째로 어긋난다.
+CACHE_VERSION = 10
+
 
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
 
+def _load_optimized_transforms(conn: sqlite3.Connection) -> dict[int, np.ndarray]:
+    """Return {node_id: 3x4} from Admin.opt_poses (LC + graph optimization 결과).
+
+    rtabmap 은 Admin 테이블에 zlib 으로 압축된 opt_ids (int32 array) 와 opt_poses
+    (3x4 float array per node) 를 저장한다. loop-closure / graph optimization 이
+    풀어낸 정확한 pose 가 여기 들어 있고 Node.pose 는 raw odometry 그대로다.
+    rtabmap-export(cloud)·map_node(graph editor) 가 모두 이 opt_poses 기준이라
+    SuperPoint world3d 도 여기서 떠야 localize 가 cloud/POI 와 같은 frame 이 된다.
+    """
+    try:
+        row = conn.execute(
+            "SELECT opt_ids, opt_poses FROM Admin "
+            "WHERE opt_ids IS NOT NULL AND opt_poses IS NOT NULL "
+            "ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        if not row or not row[0] or not row[1]:
+            return {}
+        ids_data = zlib.decompress(row[0])
+        poses_data = zlib.decompress(row[1])
+        n_ids = len(ids_data) // 4
+        n_poses = len(poses_data) // 48
+        if n_ids == 0 or n_ids != n_poses:
+            return {}
+        ids = struct.unpack('<' + 'i' * n_ids, ids_data)
+        out: dict[int, np.ndarray] = {}
+        for i, nid in enumerate(ids):
+            vals = struct.unpack('<12f', poses_data[i * 48:(i + 1) * 48])
+            if all(v == 0.0 for v in vals):
+                continue
+            out[nid] = np.array(vals, dtype=np.float64).reshape(3, 4)
+        return out
+    except (zlib.error, struct.error, sqlite3.DatabaseError):
+        return {}
+
+
+def _optimized_pose_node_ids(conn: sqlite3.Connection) -> set[int]:
+    """Return node ids covered by Admin.opt_poses, or empty set when absent."""
+    return set(_load_optimized_transforms(conn).keys())
+
+
 def _parse_node_transforms(conn: sqlite3.Connection) -> dict[int, np.ndarray]:
-    """Return {node_id: 3x4 world-transform matrix} from the Node table."""
-    result: dict[int, np.ndarray] = {}
+    """Return {node_id: 3x4 world-transform matrix}.
+
+    Admin.opt_poses (LC + graph optimization) 를 우선 사용하고, 거기에 없는 노드만
+    raw Node.pose 로 fallback. opt_poses 가 존재하는 빌드에서는 _build_index 가
+    opt 미포함 노드를 아예 drop 하므로 (frame 혼입 방지) fallback 은 opt_poses 가
+    아예 없는 (graph optimization 미수행) db 에서만 작동한다.
+    """
+    result: dict[int, np.ndarray] = dict(_load_optimized_transforms(conn))
     for node_id, blob in conn.execute(
         "SELECT id, pose FROM Node WHERE pose IS NOT NULL"
     ):
+        if node_id in result:
+            continue
         if not blob or len(blob) != 48:
             continue
         vals = struct.unpack('<12f', blob)
@@ -250,6 +307,13 @@ class SuperPointLoadedMap:
             )
             return False
 
+        if meta.get("cache_version", 1) < CACHE_VERSION:
+            logger.info(
+                "[SuperPoint] map '%s' cache version %s < %s — rebuilding",
+                self.map_id, meta.get("cache_version", 1), CACHE_VERSION,
+            )
+            return False
+
         required = ["keypoints.npy", "descriptors.npy", "frame_offsets.npy",
                     "world_points.npy", "global_descriptors.npy"]
         for fname in required:
@@ -344,6 +408,7 @@ class SuperPointLoadedMap:
                 "map_id": self.map_id,
                 "db_path": self.db_path,
                 "db_mtime": self._current_db_mtime(),
+                "cache_version": CACHE_VERSION,
                 "frame_ids": self.node_ids,
                 "image_sizes": image_sizes,
                 "total_keypoints": int(offsets[-1]),
@@ -376,6 +441,19 @@ class SuperPointLoadedMap:
             ).fetchall()]
 
             transforms = _parse_node_transforms(conn)
+            # opt_poses 존재 시, optimized pose 없는 노드는 drop — raw Node.pose 로
+            # fallback 하면 그 노드만 다른 frame 으로 들어가 world3d 가 어긋난다.
+            opt_node_ids = _optimized_pose_node_ids(conn)
+            if opt_node_ids:
+                before_count = len(all_ids)
+                all_ids = [nid for nid in all_ids if nid in opt_node_ids]
+                dropped = before_count - len(all_ids)
+                if dropped:
+                    logger.info(
+                        "[SuperPoint] '%s': dropped %d frames without optimized pose",
+                        self.map_id, dropped,
+                    )
+
             world_feats = _load_world_features(conn, transforms)
 
             global_descs: list[torch.Tensor] = []
