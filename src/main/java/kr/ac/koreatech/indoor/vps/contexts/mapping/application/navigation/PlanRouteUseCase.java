@@ -58,9 +58,13 @@ public class PlanRouteUseCase {
 
         List<PathStep> steps = new ArrayList<>();
         steps.add(new PathStep(1, command.startFloorLevel(), start, "Start", null));
-        if (command.startScanId() != null && target.routeNodeId() != null) {
-            List<RouteNode> routeNodes = graphQueryFacade.routeNodes(command.startScanId());
-            List<RouteEdge> routeEdges = graphQueryFacade.routeEdges(command.startScanId());
+        // startScanId 미지정(예: iOS 클라이언트) 시 목적지 POI 의 scanId 로 그래프를 조회한다.
+        // 동일 층 내비게이션은 출발/목적지가 같은 scan 이므로 graph routing 이 성립한다.
+        // 이게 없으면 그래프를 건너뛰고 start→목적지 직선(2-step)으로 떨어진다.
+        UUID graphScanId = command.startScanId() != null ? command.startScanId() : target.scanId();
+        if (graphScanId != null && target.routeNodeId() != null) {
+            List<RouteNode> routeNodes = graphQueryFacade.routeNodes(graphScanId);
+            List<RouteEdge> routeEdges = graphQueryFacade.routeEdges(graphScanId);
             UUID nearestNode = graphService.nearestNode(
                     routeNodes,
                     new Point3(command.startX(), command.startY(), command.startZ())

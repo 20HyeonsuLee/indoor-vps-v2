@@ -33,7 +33,8 @@ public class PoiRouteTargetResolver {
                 point == null ? 0.0 : NavigationGeometry.x(point),
                 point == null ? 0.0 : NavigationGeometry.y(point),
                 point == null ? 0.0 : NavigationGeometry.z(point),
-                poi.getFloor() == null ? null : poi.getFloor().getLevel()
+                poi.getFloor() == null ? null : poi.getFloor().getLevel(),
+                poi.getScanId()
         );
     }
 
@@ -41,6 +42,6 @@ public class PoiRouteTargetResolver {
         return poi.getDisplayPoint() != null ? poi.getDisplayPoint() : poi.getWorldPose();
     }
 
-    public record PoiRouteTarget(UUID routeNodeId, double x, double y, double z, Integer floorLevel) {
+    public record PoiRouteTarget(UUID routeNodeId, double x, double y, double z, Integer floorLevel, UUID scanId) {
     }
 }

@@ -132,6 +132,10 @@ public class PoiCanonicalEntity {
         return routeNodeId;
     }
 
+    public UUID getScanId() {
+        return scanId;
+    }
+
     public boolean isNeedsReview() {
         return needsReview;
     }
