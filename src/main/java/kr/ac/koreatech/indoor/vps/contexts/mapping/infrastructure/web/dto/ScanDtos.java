@@ -11,6 +11,17 @@ public final class ScanDtos {
     public record MergeScansRequest(List<UUID> chunkIds) {
     }
 
+    public record MergeBuildRequest(List<String> scanPaths) {
+    }
+
+    public record MergeBuildResponse(
+            UUID floorId,
+            UUID mergedScanId,
+            UUID buildJobId,
+            String status
+    ) {
+    }
+
     public record ScanStartRequest(String scanId, String deviceInfo) {
     }
 

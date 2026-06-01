@@ -9,6 +9,9 @@ import java.util.Optional;
 import java.util.UUID;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.FinalizeStreamingScanUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ListScanChunksUseCase;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergeBuildCommand;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergeBuildResult;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergeBuildUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergeScansUseCase;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.MergedScanResult;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.application.scan.ProcessFloorUseCase;
@@ -54,6 +57,7 @@ public class ScanController {
     private final ListScanChunksUseCase listScanChunksUseCase;
     private final MergeScansUseCase mergeScansUseCase;
     private final ProcessFloorUseCase processFloorUseCase;
+    private final MergeBuildUseCase mergeBuildUseCase;
     private final FixtureCaptureService fixtureCapture;
     private final IndoorProperties properties;
 
@@ -65,6 +69,7 @@ public class ScanController {
             ListScanChunksUseCase listScanChunksUseCase,
             MergeScansUseCase mergeScansUseCase,
             ProcessFloorUseCase processFloorUseCase,
+            MergeBuildUseCase mergeBuildUseCase,
             FixtureCaptureService fixtureCapture,
             IndoorProperties properties
     ) {
@@ -75,6 +80,7 @@ public class ScanController {
         this.listScanChunksUseCase = listScanChunksUseCase;
         this.mergeScansUseCase = mergeScansUseCase;
         this.processFloorUseCase = processFloorUseCase;
+        this.mergeBuildUseCase = mergeBuildUseCase;
         this.fixtureCapture = fixtureCapture;
         this.properties = properties;
     }
@@ -203,6 +209,18 @@ public class ScanController {
             @RequestParam(name = "areaId", required = false) UUID areaId
     ) {
         return processFloorUseCase.process(floorId, Optional.ofNullable(areaId));
+    }
+
+    @PostMapping("/floors/{floorId}/scans/merge-build")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public MergeBuildResponse mergeBuild(
+            @PathVariable UUID floorId,
+            @RequestBody MergeBuildRequest request
+    ) {
+        MergeBuildResult result = mergeBuildUseCase.enqueueMergeBuild(
+                new MergeBuildCommand(floorId, request.scanPaths())
+        );
+        return new MergeBuildResponse(result.floorId(), result.mergedScanId(), result.buildJobId(), result.status());
     }
 
     @GetMapping("/floors/{floorId}/process/status")

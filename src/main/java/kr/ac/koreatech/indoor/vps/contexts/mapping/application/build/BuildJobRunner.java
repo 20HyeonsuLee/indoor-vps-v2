@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,6 +13,7 @@ import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeCont
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.BuildSuperpointIndexResponse;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.ExportPointcloudResponse;
+import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.BridgeContracts.MergeScanBridgeRequest;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.bridge.port.PythonBridge;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildFailureReason;
 import kr.ac.koreatech.indoor.vps.contexts.mapping.domain.build.BuildState;
@@ -86,6 +88,7 @@ public class BuildJobRunner {
                 return;
             }
             JobInput input = inputOpt.get();
+            runMergeIfNeeded(input);
             if (!Files.exists(input.dbPath())) {
                 throw new BuildInputException("rtabmap.db not found at " + input.dbPath());
             }
@@ -97,6 +100,54 @@ public class BuildJobRunner {
         } catch (RuntimeException e) {
             markFailure(buildJobId, BuildFailureReason.internal, e.getMessage());
         }
+    }
+
+    /**
+     * scan.device_info에 merge.sources가 존재하고 dbPath가 아직 없으면 머지를 먼저 실행한다.
+     * 머지 산출물(rtabmap.db)이 이미 있으면 건너뛴다 (재시도 안전).
+     * merge.sources가 없는 일반 스캔은 이 메서드가 no-op이다.
+     */
+    @SuppressWarnings("unchecked")
+    private void runMergeIfNeeded(JobInput input) {
+        if (Files.exists(input.dbPath())) {
+            return;
+        }
+        List<String> sources = transactionTemplate.execute(status -> {
+            return scanIngestRepository.findById(input.scanId())
+                    .map(scan -> {
+                        Map<String, Object> deviceInfo = scan.getDeviceInfo();
+                        if (deviceInfo == null) {
+                            return null;
+                        }
+                        Object mergeSection = deviceInfo.get("merge");
+                        if (!(mergeSection instanceof Map<?, ?> mergeMap)) {
+                            return null;
+                        }
+                        Object rawSources = mergeMap.get("sources");
+                        if (!(rawSources instanceof List<?> list)) {
+                            return null;
+                        }
+                        return (List<String>) list;
+                    })
+                    .orElse(null);
+        });
+        if (sources == null || sources.isEmpty()) {
+            return;
+        }
+        Path outputDir = input.dbPath().getParent();
+        try {
+            Files.createDirectories(outputDir);
+        } catch (java.io.IOException e) {
+            throw new BuildInputException("cannot create merge output dir: " + outputDir + " — " + e.getMessage());
+        }
+        log.info("[MergeBuild] merging {} sources into {} for scan {}", sources.size(), outputDir, input.scanId());
+        pythonBridge.mergeScan(new MergeScanBridgeRequest(
+                null,
+                input.scanId(),
+                sources,
+                outputDir.toAbsolutePath().toString()
+        ));
+        log.info("[MergeBuild] merge complete for scan {}", input.scanId());
     }
 
     /**

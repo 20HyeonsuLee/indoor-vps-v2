@@ -93,8 +93,8 @@ def validate_localize(payload: dict[str, object]) -> None:
 
 
 def validate_merge_scan(payload: dict[str, object]) -> None:
-    require_string(payload, "floorId")
-    require_string(payload, "scanId")
+    # floorId/scanId 는 머지(reprocess)에 쓰이지 않는 메타 — optional. merge_scan_async 는
+    # sourcePaths + outputDir 만 사용한다. (merge-build 워커 경로는 floorId 를 보내지 않음)
     require_string(payload, "outputDir")
     require_string_list(payload, "sourcePaths", min_items=1)
 
@@ -235,8 +235,14 @@ async def merge_scan_async(payload: dict[str, object]) -> dict[str, object]:
     output_dir = Path(str(payload["outputDir"]))
     output_db = output_dir / "rtabmap.db"
     work_dir = output_dir / "_merge_work"
+    # source 별 provenance id. scans/<scanId>/rtabmap.db 레이아웃은 부모 dir(=scanId),
+    # 임의 경로(예: Downloads/260522-234741.db)는 파일 stem 을 쓴다 — 부모 dir 만 쓰면
+    # 같은 폴더의 여러 db 가 동일 id 로 충돌한다.
+    def _source_scan_id(p: Path) -> str:
+        return p.parent.name if p.name == "rtabmap.db" else p.stem
+
     sources = [
-        source_class(scan_id=Path(path).parent.name, db_path=Path(path))
+        source_class(scan_id=_source_scan_id(Path(path)), db_path=Path(path))
         for path in payload["sourcePaths"]
     ]
     runner = runner_class()

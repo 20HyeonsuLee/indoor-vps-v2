@@ -37,15 +37,16 @@ class PreparedRtabmapScan:
 
 @dataclass(frozen=True)
 class MultiScanReprocessParams:
+    """Minimal CLI arguments for rtabmap-reprocess multi-session merge.
+
+    Feature/loop/optimizer parameters are intentionally NOT passed via CLI:
+    rtabmap-reprocess ignores CLI overrides and reads stored parameters from
+    the first input db. Those parameters are patched directly in the db copy
+    by patch_first_db_params() before reprocess runs.
+    """
+
     append_mode: bool = True
     skip: int = 0
-    feature_strategy: int = 1
-    rehearsal_similarity: float = 1.0
-    not_linked_nodes_kept: bool = True
-    reduce_graph: bool = False
-    memory_thr: int = 0
-    time_thr: int = 0
-    optimize_max_error: float = 3.0
     warn: bool = True
     extra_args: tuple[str, ...] = ()
 
@@ -53,20 +54,7 @@ class MultiScanReprocessParams:
         args: list[str] = []
         if self.append_mode:
             args.append("-a")
-        args.extend(
-            [
-                "-skip",
-                str(self.skip),
-                f"--Kp/DetectorStrategy={self.feature_strategy}",
-                f"--Vis/FeatureType={self.feature_strategy}",
-                f"--Mem/RehearsalSimilarity={self.rehearsal_similarity}",
-                f"--Mem/NotLinkedNodesKept={str(self.not_linked_nodes_kept).lower()}",
-                f"--Mem/ReduceGraph={str(self.reduce_graph).lower()}",
-                f"--Rtabmap/MemoryThr={self.memory_thr}",
-                f"--Rtabmap/TimeThr={self.time_thr}",
-                f"--RGBD/OptimizeMaxError={self.optimize_max_error}",
-            ]
-        )
+        args.extend(["-skip", str(self.skip)])
         if self.warn:
             args.append("--uwarn")
         args.extend(self.extra_args)
@@ -229,6 +217,8 @@ def prepare_rtabmap_sources(
             target.unlink()
         shutil.copy2(source.db_path, target)
         labeled = inject_provenance_labels(target, scan_id=source.scan_id)
+        if index == 0:
+            patch_first_db_params(target)
         prepared.append(
             PreparedRtabmapScan(
                 scan_id=source.scan_id,
@@ -238,6 +228,56 @@ def prepare_rtabmap_sources(
             )
         )
     return prepared
+
+
+def patch_first_db_params(db_path: Path) -> None:
+    """Patch optimizer parameters in the first (base) session db copy.
+
+    rtabmap-reprocess ignores CLI parameter overrides and uses the parameters
+    stored inside the first input db. This function patches that copy directly:
+
+    - RGBD/OptimizeMaxError → 0  (disabled: prevents inter-session loop
+      closures from being rejected when accumulated drift exceeds the threshold)
+    - Optimizer/Robust → true  (GTSAM robust kernel absorbs outlier edges)
+
+    Only the db copy in work_dir is modified; original source db is untouched.
+    """
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT parameters FROM Info ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        if row is None:
+            logger.warning("patch_first_db_params: Info table empty in %s, skipping", db_path)
+            return
+
+        params_str: str = row[0] or ""
+        params_str = _set_rtabmap_param(params_str, "RGBD/OptimizeMaxError", "0")
+        params_str = _set_rtabmap_param(params_str, "Optimizer/Robust", "true")
+
+        conn.execute("UPDATE Info SET parameters = ?", (params_str,))
+        conn.commit()
+        logger.info("patch_first_db_params: patched %s", db_path)
+    finally:
+        conn.close()
+
+
+def _set_rtabmap_param(params_str: str, key: str, value: str) -> str:
+    """Set key to value in a 'Key:Value;Key:Value;...' parameter string.
+
+    Replaces existing entry in-place or appends if absent.
+    """
+    prefix = f"{key}:"
+    entries = [e for e in params_str.split(";") if e]
+    replaced = False
+    for i, entry in enumerate(entries):
+        if entry.startswith(prefix):
+            entries[i] = f"{key}:{value}"
+            replaced = True
+            break
+    if not replaced:
+        entries.append(f"{key}:{value}")
+    return ";".join(entries)
 
 
 def inject_provenance_labels(db_path: Path, *, scan_id: str) -> int:
